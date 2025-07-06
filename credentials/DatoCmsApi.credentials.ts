@@ -44,8 +44,8 @@ export class DatoCmsApi implements ICredentialType {
 		properties: {
 			headers: {
 				'Authorization': '=Bearer {{ $credentials.apiToken }}',
-				'Content-Type': 'application/json',
-				'X-API-Version': '3',
+				'Accept': 'application/json',
+				'X-Api-Version': '3',
 			},
 		},
 	};
@@ -53,7 +53,7 @@ export class DatoCmsApi implements ICredentialType {
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: '={{ $credentials.baseUrl }}',
-			url: '/account',
+			url: '/site',
 			method: 'GET',
 		},
 	};
