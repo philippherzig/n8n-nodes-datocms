@@ -19,6 +19,11 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 - **Dynamic Field Loading**: Content types and fields populated automatically
 - **Multi-Step Operations**: Complex workflows abstracted into single actions
 - **Intuitive UX**: Dropdown selections instead of manual ID entry
+- **Proper Array Handling**: GetAll operations return each item as separate n8n workflow items
+- **Flexible Pagination**: Support for both "Return All" and limited results with configurable limits
+  - **Records**: Up to 500 items per request, uses efficient DatoCMS pagination
+  - **Uploads**: Up to 50 items per request, uses efficient DatoCMS pagination  
+  - **Item Types**: Client-side pagination (API doesn't support server-side pagination)
 
 ## Project Structure
 
@@ -85,6 +90,18 @@ npm run lint
 npm run format
 ```
 
+### Development Workflow
+
+When making changes to the node:
+
+1. **Make your code changes** in TypeScript files
+2. **Build the project**: `npm run build` (required for changes to take effect)
+3. **Restart n8n**: Stop (Ctrl+C) and restart `npx n8n` 
+4. **Test changes** in n8n interface
+5. **Commit changes**: `git add` and `git commit`
+
+**Important**: Always rebuild after code changes, as n8n loads the compiled JavaScript from the `dist/` directory, not the TypeScript source files.
+
 ## Local Testing
 
 See [TESTING.md](./TESTING.md) for detailed instructions on testing the node locally during development.
@@ -141,11 +158,14 @@ Set these in your DatoCMS project:
 1. **"Failed to load item types"**: Check API token permissions
 2. **Upload errors**: Ensure binary data is properly formatted
 3. **Publishing failures**: Verify record exists and is in draft state
+4. **GetAll operations showing as single item**: Ensure you've rebuilt after code changes and restarted n8n
 
 ### Development Tips
 - Use the built-in credential test to verify API connectivity
 - Check the n8n logs for detailed error messages
 - Ensure your DatoCMS project has the required content models
+- Always rebuild (`npm run build`) after making code changes
+- Restart n8n completely after rebuilding to load new changes
 
 ## Future Enhancements
 

@@ -238,6 +238,37 @@ export class DatoCms implements INodeType {
 			},
 			// Additional options
 			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['record', 'upload', 'itemType'],
+						operation: ['getAll'],
+					},
+				},
+				default: false,
+				description: 'Whether to return all results or limit the number of results returned',
+			},
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				displayOptions: {
+					show: {
+						resource: ['record', 'upload', 'itemType'],
+						operation: ['getAll'],
+						returnAll: [false],
+					},
+				},
+				typeOptions: {
+					minValue: 1,
+					maxValue: 500,
+				},
+				default: 50,
+				description: 'Maximum number of items to return',
+			},
+			{
 				displayName: 'Additional Fields',
 				name: 'additionalFields',
 				type: 'collection',
@@ -328,19 +359,43 @@ export class DatoCms implements INodeType {
 							break;
 
 						case 'getAll':
-							const items = await client.items.list({
-								filter: {
-									type: itemType,
-								},
-							});
-							// Handle multiple items: each item should be a separate n8n item
-							for (const item of items) {
-								returnData.push({
-									json: item as any,
-									pairedItem: {
-										item: i,
+							const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+							const limit = this.getNodeParameter('limit', i, 50) as number;
+							
+							if (returnAll) {
+								// Use paginated iterator to get all items
+								const items = client.items.listPagedIterator({
+									filter: {
+										type: itemType,
 									},
 								});
+								for await (const item of items) {
+									returnData.push({
+										json: item as any,
+										pairedItem: {
+											item: i,
+										},
+									});
+								}
+							} else {
+								// Use regular list with pagination
+								const items = await client.items.list({
+									filter: {
+										type: itemType,
+									},
+									page: {
+										limit: Math.min(limit, 500), // DatoCMS record limit is 500
+										offset: 0,
+									},
+								});
+								for (const item of items) {
+									returnData.push({
+										json: item as any,
+										pairedItem: {
+											item: i,
+										},
+									});
+								}
 							}
 							continue;
 
@@ -393,15 +448,36 @@ export class DatoCms implements INodeType {
 							break;
 
 						case 'getAll':
-							const uploads = await client.uploads.list();
-							// Handle multiple items: each upload should be a separate n8n item
-							for (const upload of uploads) {
-								returnData.push({
-									json: upload as any,
-									pairedItem: {
-										item: i,
+							const returnAllUploads = this.getNodeParameter('returnAll', i) as boolean;
+							const limitUploads = this.getNodeParameter('limit', i, 50) as number;
+							
+							if (returnAllUploads) {
+								// Use paginated iterator to get all uploads
+								const uploads = client.uploads.listPagedIterator();
+								for await (const upload of uploads) {
+									returnData.push({
+										json: upload as any,
+										pairedItem: {
+											item: i,
+										},
+									});
+								}
+							} else {
+								// Use regular list with pagination
+								const uploads = await client.uploads.list({
+									page: {
+										limit: Math.min(limitUploads, 50), // DatoCMS upload limit is 50
+										offset: 0,
 									},
 								});
+								for (const upload of uploads) {
+									returnData.push({
+										json: upload as any,
+										pairedItem: {
+											item: i,
+										},
+									});
+								}
 							}
 							continue;
 
@@ -413,9 +489,14 @@ export class DatoCms implements INodeType {
 				} else if (resource === 'itemType') {
 					switch (operation) {
 						case 'getAll':
-							const itemTypes = await client.itemTypes.list();
+							const returnAllItemTypes = this.getNodeParameter('returnAll', i) as boolean;
+							const limitItemTypes = this.getNodeParameter('limit', i, 50) as number;
+							
+							const allItemTypes = await client.itemTypes.list();
+							const itemTypesToReturn = returnAllItemTypes ? allItemTypes : allItemTypes.slice(0, limitItemTypes);
+							
 							// Handle multiple items: each item type should be a separate n8n item
-							for (const itemType of itemTypes) {
+							for (const itemType of itemTypesToReturn) {
 								returnData.push({
 									json: itemType as any,
 									pairedItem: {
