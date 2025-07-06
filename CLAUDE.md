@@ -57,9 +57,9 @@ n8n-nodes-datocms/
 - `unpublish`: Unpublish live records
 
 #### Upload Resource
-- `create`: Upload binary files (images, documents, etc.)
+- `create`: Upload files from binary data or remote URLs (images, documents, etc.) with optional collection assignment
 - `get`: Retrieve upload information by ID
-- `getAll`: List all uploads
+- `getAll`: List all uploads with optional collection filtering
 - `delete`: Remove uploaded files
 
 #### Item Type Resource
@@ -135,10 +135,28 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
 5. Auto Publish: ✅
 
 #### Uploading an Image
+**From Binary Data:**
 1. Resource: Upload
 2. Operation: Create
-3. Binary Property: data
-4. The uploaded file can then be linked to records
+3. Upload Source: Binary Data
+4. Binary Property: data
+5. The uploaded file can then be linked to records
+
+**From URL:**
+1. Resource: Upload
+2. Operation: Create
+3. Upload Source: URL
+4. File URL: https://example.com/image.jpg
+5. Skip Creation If Already Exists: ✅ (default)
+6. Upload Collection: [Optional: Select from dropdown]
+7. The uploaded file can then be linked to records
+
+#### Filtering Uploads by Collection
+1. Resource: Upload
+2. Operation: Get All
+3. Return All: ✅ (or set limit)
+4. Filter by Collection: [Optional: Select specific collection]
+5. Returns only uploads from the selected collection
 
 ## Configuration
 

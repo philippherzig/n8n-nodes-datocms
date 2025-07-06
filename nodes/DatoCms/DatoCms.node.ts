@@ -8,6 +8,9 @@ import {
 	NodeConnectionType,
 	NodeOperationError,
 } from 'n8n-workflow';
+import { writeFileSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 import { buildClient } from '@datocms/cma-client-node';
 
@@ -209,6 +212,32 @@ export class DatoCms implements INodeType {
 			},
 			// Upload fields
 			{
+				displayName: 'Upload Source',
+				name: 'uploadSource',
+				type: 'options',
+				options: [
+					{
+						name: 'Binary Data',
+						value: 'binary',
+						description: 'Upload from binary data in workflow',
+					},
+					{
+						name: 'URL',
+						value: 'url',
+						description: 'Upload from remote URL',
+					},
+				],
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['create'],
+					},
+				},
+				default: 'binary',
+				required: true,
+				description: 'Source for the file upload',
+			},
+			{
 				displayName: 'Binary Property',
 				name: 'binaryPropertyName',
 				type: 'string',
@@ -216,11 +245,73 @@ export class DatoCms implements INodeType {
 					show: {
 						resource: ['upload'],
 						operation: ['create'],
+						uploadSource: ['binary'],
 					},
 				},
 				default: 'data',
 				required: true,
 				description: 'Name of the binary property to upload',
+			},
+			{
+				displayName: 'File URL',
+				name: 'fileUrl',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['create'],
+						uploadSource: ['url'],
+					},
+				},
+				default: '',
+				required: true,
+				description: 'URL of the file to upload',
+				placeholder: 'https://example.com/image.jpg',
+			},
+			{
+				displayName: 'Skip Creation If Already Exists',
+				name: 'skipCreationIfAlreadyExists',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['create'],
+					},
+				},
+				default: true,
+				description: 'If enabled, skip creating a new upload if a file with the same content already exists in DatoCMS',
+			},
+			{
+				displayName: 'Upload Collection',
+				name: 'uploadCollection',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getUploadCollections',
+				},
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['create'],
+					},
+				},
+				default: '',
+				description: 'Optional: Upload collection to organize the upload',
+			},
+			{
+				displayName: 'Filter by Collection',
+				name: 'filterByCollection',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getUploadCollections',
+				},
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['getAll'],
+					},
+				},
+				default: '',
+				description: 'Optional: Filter uploads by collection (client-side filtering). Note: DatoCMS API doesn\'t support server-side collection filtering.',
 			},
 			{
 				displayName: 'Upload ID',
@@ -311,6 +402,46 @@ export class DatoCms implements INodeType {
 					}));
 				} catch (error) {
 					throw new NodeOperationError(this.getNode(), `Failed to load item types: ${error.message}`);
+				}
+			},
+
+			async getUploadCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+				});
+
+				try {
+					const uploadCollections = await client.uploadCollections.list();
+					
+					// Add a "None" option as the first choice
+					const options: INodePropertyOptions[] = [
+						{
+							name: '(None)',
+							value: '',
+						},
+					];
+					
+					// Add upload collections
+					options.push(...uploadCollections.map((collection) => ({
+						name: collection.label,
+						value: collection.id,
+					})));
+					
+					return options;
+				} catch (error) {
+					// Graceful degradation: If upload collections are not accessible,
+					// return only the "None" option so upload still works
+					if (error.message && (error.message.includes('INSUFFICIENT_PERMISSIONS') || error.message.includes('401'))) {
+						return [
+							{
+								name: '(None - Upload Collections not accessible)',
+								value: '',
+							},
+						];
+					}
+					throw new NodeOperationError(this.getNode(), `Failed to load upload collections: ${error.message}`);
 				}
 			},
 		},
@@ -433,13 +564,62 @@ export class DatoCms implements INodeType {
 				} else if (resource === 'upload') {
 					switch (operation) {
 						case 'create':
-							const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
-							this.helpers.assertBinaryData(i, binaryPropertyName);
-							const buffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
-
-							responseData = await client.uploads.create({
-								path: buffer,
-							});
+							const uploadSource = this.getNodeParameter('uploadSource', i) as string;
+							const skipCreationIfAlreadyExists = this.getNodeParameter('skipCreationIfAlreadyExists', i) as boolean;
+						const uploadCollection = this.getNodeParameter('uploadCollection', i) as string;
+							
+							if (uploadSource === 'binary') {
+								const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
+								const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
+								const buffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+								
+								// Get filename from binary data
+								const filename = binaryData.fileName || 'upload.bin';
+								
+								// Create temporary file
+								const tempFilePath = join(tmpdir(), `datocms-upload-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+								writeFileSync(tempFilePath, buffer);
+								
+								try {
+									responseData = await client.uploads.createFromLocalFile({
+										localPath: tempFilePath,
+										filename: filename,
+										skipCreationIfAlreadyExists: skipCreationIfAlreadyExists,
+									...(uploadCollection ? { 
+										upload_collection: {
+											type: 'upload_collection',
+											id: uploadCollection
+										}
+									} : {})
+									});
+								} finally {
+									// Clean up temporary file
+									try {
+										unlinkSync(tempFilePath);
+									} catch (error) {
+										// Ignore cleanup errors
+									}
+								}
+							} else if (uploadSource === 'url') {
+								const fileUrl = this.getNodeParameter('fileUrl', i) as string;
+								
+								if (!fileUrl) {
+									throw new Error('File URL is required when using URL upload source');
+								}
+								
+								responseData = await client.uploads.createFromUrl({
+									url: fileUrl,
+									skipCreationIfAlreadyExists: skipCreationIfAlreadyExists,
+									...(uploadCollection ? { 
+										upload_collection: {
+											type: 'upload_collection',
+											id: uploadCollection
+										}
+									} : {})
+								});
+							} else {
+								throw new Error('Invalid upload source specified');
+							}
 							break;
 
 						case 'get':
@@ -450,17 +630,25 @@ export class DatoCms implements INodeType {
 						case 'getAll':
 							const returnAllUploads = this.getNodeParameter('returnAll', i) as boolean;
 							const limitUploads = this.getNodeParameter('limit', i, 50) as number;
+							const filterByCollection = this.getNodeParameter('filterByCollection', i) as string;
+							
+							// Since DatoCMS API doesn't support server-side collection filtering,
+							// we'll do client-side filtering after fetching the uploads
 							
 							if (returnAllUploads) {
 								// Use paginated iterator to get all uploads
 								const uploads = client.uploads.listPagedIterator();
 								for await (const upload of uploads) {
-									returnData.push({
-										json: upload as any,
-										pairedItem: {
-											item: i,
-										},
-									});
+									// Apply client-side collection filter
+									if (!filterByCollection || 
+										(upload.upload_collection && upload.upload_collection.id === filterByCollection)) {
+										returnData.push({
+											json: upload as any,
+											pairedItem: {
+												item: i,
+											},
+										});
+									}
 								}
 							} else {
 								// Use regular list with pagination
@@ -471,12 +659,16 @@ export class DatoCms implements INodeType {
 									},
 								});
 								for (const upload of uploads) {
-									returnData.push({
-										json: upload as any,
-										pairedItem: {
-											item: i,
-										},
-									});
+									// Apply client-side collection filter
+									if (!filterByCollection || 
+										(upload.upload_collection && upload.upload_collection.id === filterByCollection)) {
+										returnData.push({
+											json: upload as any,
+											pairedItem: {
+												item: i,
+											},
+										});
+									}
 								}
 							}
 							continue;
