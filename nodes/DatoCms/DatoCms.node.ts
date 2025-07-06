@@ -328,12 +328,21 @@ export class DatoCms implements INodeType {
 							break;
 
 						case 'getAll':
-							responseData = await client.items.list({
+							const items = await client.items.list({
 								filter: {
 									type: itemType,
 								},
 							});
-							break;
+							// Handle multiple items: each item should be a separate n8n item
+							for (const item of items) {
+								returnData.push({
+									json: item as any,
+									pairedItem: {
+										item: i,
+									},
+								});
+							}
+							continue;
 
 						case 'update':
 							const updateRecordId = this.getNodeParameter('recordId', i) as string;
@@ -384,8 +393,17 @@ export class DatoCms implements INodeType {
 							break;
 
 						case 'getAll':
-							responseData = await client.uploads.list();
-							break;
+							const uploads = await client.uploads.list();
+							// Handle multiple items: each upload should be a separate n8n item
+							for (const upload of uploads) {
+								returnData.push({
+									json: upload as any,
+									pairedItem: {
+										item: i,
+									},
+								});
+							}
+							continue;
 
 						case 'delete':
 							const deleteUploadId = this.getNodeParameter('uploadId', i) as string;
@@ -395,8 +413,17 @@ export class DatoCms implements INodeType {
 				} else if (resource === 'itemType') {
 					switch (operation) {
 						case 'getAll':
-							responseData = await client.itemTypes.list();
-							break;
+							const itemTypes = await client.itemTypes.list();
+							// Handle multiple items: each item type should be a separate n8n item
+							for (const itemType of itemTypes) {
+								returnData.push({
+									json: itemType as any,
+									pairedItem: {
+										item: i,
+									},
+								});
+							}
+							continue;
 
 						case 'get':
 							const itemTypeId = this.getNodeParameter('itemTypeId', i) as string;
@@ -405,12 +432,15 @@ export class DatoCms implements INodeType {
 					}
 				}
 
-				returnData.push({
-					json: responseData as any || {},
-					pairedItem: {
-						item: i,
-					},
-				});
+				// Only add to returnData if responseData exists (getAll operations handle this separately)
+				if (responseData !== undefined) {
+					returnData.push({
+						json: responseData as any || {},
+						pairedItem: {
+							item: i,
+						},
+					});
+				}
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({
