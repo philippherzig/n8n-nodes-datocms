@@ -85,6 +85,21 @@ npm run lint
 npm run format
 ```
 
+## Local Testing
+
+See [TESTING.md](./TESTING.md) for detailed instructions on testing the node locally during development.
+
+**Quick Setup:**
+```bash
+# Build and link for testing
+npm run build
+mkdir -p ~/.n8n/nodes
+cd ~/.n8n/nodes && npm link /absolute/path/to/n8n-nodes-datocms
+npx n8n
+```
+
+The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface.
+
 ## Usage in n8n
 
 1. **Install the node** in your n8n instance

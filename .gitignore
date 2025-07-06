@@ -1,8 +1,18 @@
-node_modules
-.DS_Store
-.tmp
-tmp
-dist
+# Dependencies
+node_modules/
+*.log
 npm-debug.log*
-yarn.lock
-.vscode/launch.json
+
+# Build outputs
+dist/
+
+# Testing Package
+n8n-nodes-datocms-*.tgz
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
