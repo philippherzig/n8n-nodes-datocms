@@ -11,7 +11,13 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 - **File Upload Management** with automatic record linking
 - **Dynamic Content Type Selection** via dropdown (no manual ID entry required)
 - **Dynamic Field Mapping** via ResourceMapper (no JSON required for most fields)
-- **Localized Fields Support** with automatic detection and JSON format guidance
+- **Enhanced Field Validation & Display**:
+  - **Required Fields**: Automatically protected from removal in UI
+  - **Unique Fields**: Marked with "(Unique)" indicator
+  - **Localized Fields**: Marked with "(Localized)" indicator
+  - **Field Ordering**: Matches DatoCMS schema order
+  - **Enhanced Field Types**: URL fields get automatic validation
+  - **Enum Field Support**: Dropdown options for predefined values
 - **Auto-publish functionality** for streamlined workflows
 - **Item Type Management** for exploring content models
 - **Robust error handling** with continue-on-fail support
@@ -20,7 +26,11 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 - **Simplified for Non-Techies**: No complex HTTP requests needed
 - **Dynamic Field Loading**: Content types and fields populated automatically
 - **ResourceMapper Integration**: Visual field mapping interface eliminates JSON complexity
-- **Automatic Localization Support**: Localized fields detected and marked automatically
+- **Smart Field Handling**: 
+  - Required fields automatically protected from removal
+  - Unique and localized fields clearly marked
+  - Proper field ordering matching DatoCMS schema
+  - Enhanced validation based on DatoCMS field types
 - **Multi-Step Operations**: Complex workflows abstracted into single actions
 - **Intuitive UX**: Dropdown selections instead of manual ID entry
 - **Proper Array Handling**: GetAll operations return each item as separate n8n workflow items
@@ -166,9 +176,9 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
 4. Filter by Collection: [Optional: Select specific collection]
 5. Returns only uploads from the selected collection
 
-#### Working with Localized Fields
-When your DatoCMS model has localized fields (multi-language content):
+#### Working with Special Field Types
 
+**Localized Fields (Multi-language content):**
 1. **Field Detection**: Localized fields are automatically detected and marked with "(Localized)" in the field name
 2. **JSON Format**: Use JSON format to provide content for each locale:
    ```json
@@ -179,7 +189,22 @@ When your DatoCMS model has localized fields (multi-language content):
    }
    ```
 3. **Auto-parsing**: The node automatically converts JSON strings to the correct DatoCMS format
-4. **Minimalist Approach**: Only localized fields require special handling; regular fields work as normal
+
+**Required Fields:**
+- Automatically detected and protected from removal in the ResourceMapper UI
+- Cannot be accidentally deleted from field mapping
+
+**Unique Fields:**
+- Marked with "(Unique)" indicator to show they must have unique values
+- Helps prevent duplicate content errors
+
+**URL Fields:**
+- Automatically validated with n8n's URL field type
+- Prevents invalid URL formats from being submitted
+
+**Enum Fields:**
+- Display dropdown options with predefined values when supported
+- Limits input to valid choices defined in DatoCMS schema
 
 ## Configuration
 

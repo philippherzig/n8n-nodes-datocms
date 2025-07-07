@@ -634,6 +634,9 @@ export class DatoCms implements INodeType {
 					// Get all fields for this item type
 					const fields = await client.fields.list(itemType);
 					
+					// Sort fields by position to match DatoCMS schema order
+					fields.sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+					
 					const mappedFields: ResourceMapperFields = {
 						fields: []
 					};
@@ -669,24 +672,56 @@ export class DatoCms implements INodeType {
 							continue;
 						}
 
-						const fieldType = fieldTypeMapping[field.field_type] || 'string';
+						let fieldType = fieldTypeMapping[field.field_type] || 'string';
 						const isLocalized = field.localized === true;
+						const isRequired = !!(field.validators as any)?.required;
+						const isUnique = !!(field.validators as any)?.unique;
 						
-						// For localized fields, show (Localized) in display name
-						const displayName = isLocalized 
-							? `${field.label} (Localized)`
-							: field.label;
+						// Apply enhanced field types based on DatoCMS validators
+						const validators = field.validators as any;
+						if (validators?.format?.predefined_pattern === 'url') {
+							fieldType = 'url';
+						} else if (validators?.format?.predefined_pattern === 'email') {
+							fieldType = 'string'; // n8n doesn't have email type in ResourceMapper
+						}
 						
-						mappedFields.fields.push({
+						// For enum fields, we could set options but ResourceMapper doesn't support it well
+						let fieldOptions: any = undefined;
+						if (validators?.enum?.values && Array.isArray(validators.enum.values)) {
+							// Note: ResourceMapper options support is limited, but we can try
+							fieldOptions = validators.enum.values.map((value: any) => ({
+								name: value,
+								value: value
+							}));
+						}
+						
+						// Build display name with markers for unique and localized fields
+						// Note: Required fields are handled by required: true property which prevents removal
+						let displayName = field.label;
+						if (isUnique) {
+							displayName = `${displayName} (Unique)`;
+						}
+						if (isLocalized) {
+							displayName = `${displayName} (Localized)`;
+						}
+						
+						const fieldDef: any = {
 							id: field.api_key,
 							displayName: displayName,
 							type: isLocalized ? 'string' : fieldType, // Use string type for localized fields to allow JSON input
-							required: (field.validators as any)?.required?.value === true,
+							required: isRequired,
 							defaultMatch: false,
 							canBeUsedToMatch: true,
 							display: true,
 							removed: false,
-						});
+						};
+						
+						// Add options for enum fields if available
+						if (fieldOptions) {
+							fieldDef.options = fieldOptions;
+						}
+						
+						mappedFields.fields.push(fieldDef);
 					}
 
 					return mappedFields;
