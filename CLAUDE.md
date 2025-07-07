@@ -63,10 +63,10 @@ n8n-nodes-datocms/
 
 #### Records Resource
 - `create`: Create new content records with ResourceMapper field interface and auto-publish option
-- `upsert`: Create or update records using field-based matching (e.g., external ID, slug) with optimized API filtering for performance
+- `upsert`: Create or update records using external/business field matching (e.g., external ID, slug, SKU) with integrated ResourceMapper matching field selection - optimized for business identifiers, not internal DatoCMS IDs
 - `get`: Retrieve single record by ID
 - `getAll`: List all records filtered by content type
-- `update`: Update existing records by Record ID with ResourceMapper field interface and auto-publish option
+- `update`: Update existing records by internal DatoCMS Record ID with ResourceMapper field interface and auto-publish option
 - `delete`: Remove records
 - `publish`: Publish draft records
 - `unpublish`: Unpublish live records
@@ -153,16 +153,24 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
    - Localized fields: Use JSON format like `{"en": "My Post", "de": "Mein Beitrag"}`
 5. Auto Publish: ✅
 
-#### Syncing External Data (Create or Update)
+#### Syncing External Data (Upsert)
 1. Resource: Record
-2. Operation: Create or Update
+2. Operation: Upsert
 3. Item Type: [Select from dropdown]
-4. Field to Match On: [Select field like "external_id", "slug", or any unique field]
-5. Fields: Use ResourceMapper to map fields visually
-6. Create If Not Found: ✅ (default: true)
-7. Auto Publish: ✅ (optional)
+4. Fields: Use ResourceMapper to map fields visually
+   - **Matching Fields Section**: Select field(s) to match on (e.g., "external_id", "slug", "SKU")
+   - **Field Mapping Section**: Map all other fields
+   - **Automatic Detection**: First unique field is pre-selected as matching field
+5. Create If Not Found: ✅ (default: true)
+6. Auto Publish: ✅ (optional)
 
-This is perfect for sync processes where you have external IDs and want to update existing records or create new ones if they don't exist. The operation uses optimized API filtering for fast performance, even with large datasets, and includes both draft and published records in the search.
+This is perfect for sync processes where you have external/business IDs and want to update existing records or create new ones if they don't exist. The integrated ResourceMapper provides native n8n matching field selection with automatic field reloading. The operation uses optimized API filtering for fast performance, even with large datasets, and includes both draft and published records in the search.
+
+**Key Benefits:**
+- **Integrated Matching**: No separate field dropdown - matching fields are configured directly in the ResourceMapper
+- **Business-Focused**: Excludes internal DatoCMS ID field - designed for external identifiers
+- **Auto-Reload**: When you reload fields, matching options are automatically updated
+- **Smart Defaults**: First unique field is automatically selected as the default matching field
 
 #### Uploading an Image
 **From Binary Data:**
@@ -253,9 +261,13 @@ Set these in your DatoCMS project:
 - **Efficient Field Matching**: Direct API filtering by field values eliminates the need to fetch and iterate through all records
 
 ### UI/UX Improvements ✅
-- **Clean Operation Separation**: Update and Upsert operations have distinct, appropriate interfaces
-- **Consistent Naming**: All operations follow consistent "Record [Action]" naming convention
-- **Simplified Field Mapping**: ResourceMapper modes optimized for each operation type
+- **Native ResourceMapper Upsert Mode**: Implemented n8n's official ResourceMapper `mode: 'upsert'` with `multiKeyMatch: true` for integrated matching field selection
+- **Business-Focused Upsert**: Upsert operation excludes internal DatoCMS ID field, focusing on external/business identifiers like SKUs, external IDs, slugs
+- **Smart Field Defaults**: First unique field automatically selected as default matching field
+- **Integrated Matching UI**: Matching fields configured directly within ResourceMapper - no separate dropdown needed
+- **Clean Operation Separation**: Update (internal ID) and Upsert (external ID) operations have distinct, appropriate interfaces
+- **Consistent Naming**: All operations follow consistent "Record [Action]" naming convention, with "Upsert" replacing "Create or Update"
+- **Auto-Reload Support**: ResourceMapper automatically reloads matching field options when fields are refreshed
 
 ## Future Enhancements
 

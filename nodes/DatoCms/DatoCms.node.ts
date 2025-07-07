@@ -76,10 +76,10 @@ export class DatoCms implements INodeType {
 						description: 'Create a new record',
 					},
 					{
-						name: 'Create or Update',
+						name: 'Upsert',
 						value: 'upsert',
-						description: 'Create a new record, or update the current one if it already exists (upsert)',
-						action: 'Record Create or Update',
+						description: 'Create a new record, or update the current one if it already exists',
+						action: 'Record Upsert',
 					},
 					{
 						name: 'Delete',
@@ -453,24 +453,6 @@ export class DatoCms implements INodeType {
 				default: 50,
 				description: 'Maximum number of items to return',
 			},
-			// Parameters for upsert operation
-			{
-				displayName: 'Field to Match On',
-				name: 'fieldToMatchOn',
-				type: 'options',
-				displayOptions: {
-					show: {
-						resource: ['record'],
-						operation: ['upsert'],
-					},
-				},
-				default: '',
-				required: true,
-				description: 'The field to use when matching rows in DatoCMS to find existing records. Usually an ID or unique field.',
-				typeOptions: {
-					loadOptionsMethod: 'getMatchableFields',
-				},
-			},
 			{
 				displayName: 'Fields',
 				name: 'fields',
@@ -489,13 +471,22 @@ export class DatoCms implements INodeType {
 				typeOptions: {
 					resourceMapper: {
 						resourceMapperMethod: 'getModelFields',
-						mode: 'add',
-						valuesLabel: 'Fields',
+						mode: 'upsert',
+						fieldWords: {
+							singular: 'field',
+							plural: 'fields',
+						},
 						addAllFields: true,
-						multiKeyMatch: false,
+						multiKeyMatch: true,
+						supportAutoMap: true,
+						matchingFieldsLabels: {
+							title: 'Matching Fields',
+							description: 'Fields to use for matching existing records. Usually an ID or unique field.',
+							hint: 'Select the field(s) to match records on for upsert operations',
+						},
 					},
 				},
-				description: 'Fields to create or update in the record',
+				description: 'Fields to upsert in the record. Use matching fields to identify existing records.',
 			},
 			{
 				displayName: 'Create If Not Found',
@@ -652,59 +643,6 @@ export class DatoCms implements INodeType {
 				}
 			},
 
-			async getMatchableFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const credentials = await this.getCredentials('datoCmsApi');
-				const client = buildClient({
-					apiToken: credentials.apiToken as string,
-					environment: credentials.environment as string,
-				});
-
-				try {
-					const itemTypeParam = this.getNodeParameter('itemType') as any;
-					const itemTypeId = itemTypeParam?.value || itemTypeParam;
-					
-					if (!itemTypeId) {
-						return [];
-					}
-
-					const fields = await client.fields.list(itemTypeId);
-					
-					// Filter to matchable fields (unique fields, IDs, and specific field types)
-					const matchableFields = fields.filter((field: any) => {
-						// Include ID field
-						if (field.api_key === 'id') return true;
-						
-						// Include unique fields
-						const validators = field.validators as any;
-						if (validators?.unique) return true;
-						
-						// Include string, slug, and integer fields that could be external IDs
-						const matchableTypes = ['string', 'slug', 'integer'];
-						if (matchableTypes.includes(field.field_type)) return true;
-						
-						return false;
-					});
-					
-					return matchableFields.map((field: any) => {
-						let name = field.label || field.api_key;
-						
-						// Add indicators for special field properties
-						const indicators = [];
-						if (field.api_key === 'id') indicators.push('DatoCMS ID');
-						if ((field.validators as any)?.unique) indicators.push('Unique');
-						if (indicators.length > 0) {
-							name += ` (${indicators.join(', ')})`;
-						}
-						
-						return {
-							name,
-							value: field.api_key,
-						};
-					});
-				} catch (error) {
-					throw new NodeOperationError(this.getNode(), `Failed to load matchable fields: ${error.message}`);
-				}
-			},
 
 			async getSiteLocales(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const credentials = await this.getCredentials('datoCmsApi');
@@ -783,6 +721,9 @@ export class DatoCms implements INodeType {
 					};
 					
 
+					// Track if we have any unique fields for defaultMatch
+					let firstUniqueField: string | null = null;
+
 					for (const field of fields) {
 						// Skip system fields and non-editable fields
 						if (field.api_key === 'id' || field.api_key === 'created_at' || field.api_key === 'updated_at') {
@@ -822,13 +763,22 @@ export class DatoCms implements INodeType {
 							displayName = `${displayName} (Localized)`;
 						}
 						
+						// Determine if field can be used for matching
+						const canBeUsedToMatch = isUnique || ['string', 'slug', 'integer'].includes(field.field_type);
+						
+						// Set first unique field as default match
+						const isDefaultMatch = isUnique && firstUniqueField === null;
+						if (isDefaultMatch) {
+							firstUniqueField = field.api_key;
+						}
+						
 						const fieldDef: any = {
 							id: field.api_key,
 							displayName: displayName,
 							type: isLocalized ? 'string' : fieldType, // Use string type for localized fields to allow JSON input
 							required: isRequired,
-							defaultMatch: false,
-							canBeUsedToMatch: true,
+							defaultMatch: isDefaultMatch,
+							canBeUsedToMatch: canBeUsedToMatch,
 							display: true,
 							removed: false,
 						};
@@ -1009,16 +959,25 @@ export class DatoCms implements INodeType {
 						case 'upsert':
 							const upsertItemTypeParam = this.getNodeParameter('itemType', i) as any;
 							const upsertItemTypeId = upsertItemTypeParam?.value || upsertItemTypeParam;
-							const fieldToMatchOn = this.getNodeParameter('fieldToMatchOn', i) as string;
 							const upsertFields = this.getNodeParameter('fields', i) as any;
 							const createIfNotFound = this.getNodeParameter('createIfNotFound', i, true) as boolean;
 							const upsertAdditionalFields = this.getNodeParameter('additionalFields', i, {}) as any;
 							
-							// Handle resourceMapper data
+							// Handle resourceMapper data and extract matching fields
 							let upsertFieldData: any = {};
+							let matchingFields: any = {};
+							
 							if (upsertFields.mappingMode === 'defineBelow' && upsertFields.value) {
 								// Convert resourceMapper format to DatoCMS format
 								upsertFieldData = { ...upsertFields.value };
+								
+								// Extract matching fields from ResourceMapper
+								if (upsertFields.matchingColumns && Array.isArray(upsertFields.matchingColumns)) {
+									// Build matching fields object from array
+									for (const matchingColumn of upsertFields.matchingColumns) {
+										matchingFields[matchingColumn] = upsertFieldData[matchingColumn];
+									}
+								}
 								
 								// Parse any JSON strings that might be localized fields
 								for (const [key, value] of Object.entries(upsertFieldData)) {
@@ -1040,52 +999,49 @@ export class DatoCms implements INodeType {
 								// Auto-map from input data
 								const inputData = items[i].json;
 								upsertFieldData = inputData;
+								
+								// For auto-mapping, we need to have matching fields configured
+								// We cannot assume any field for matching
 							}
 
-							// Get the value to match on from the field data
-							const matchValue = upsertFieldData[fieldToMatchOn];
+							// Get the matching field (must be explicitly configured)
+							const matchingFieldKeys = Object.keys(matchingFields);
+							if (matchingFieldKeys.length === 0) {
+								throw new NodeOperationError(this.getNode(), 'No matching fields configured. Please select at least one field to match records on in the resource mapper.');
+							}
+							
+							const fieldToMatchOn = matchingFieldKeys[0]; // Use first matching field
+							const matchValue = matchingFields[fieldToMatchOn] || upsertFieldData[fieldToMatchOn];
+							
 							if (!matchValue) {
-								throw new NodeOperationError(this.getNode(), `No value provided for matching field '${fieldToMatchOn}'`);
+								throw new NodeOperationError(this.getNode(), `No value provided for matching field '${fieldToMatchOn}'. Please provide a value for the matching field.`);
 							}
 
 							// Search for existing record(s) by the matching field
 							let existingRecords: any[] = [];
 							try {
-								if (fieldToMatchOn === 'id') {
-									// Direct ID lookup
-									try {
-										const existingRecord = await client.items.find(matchValue);
-										existingRecords = [existingRecord];
-									} catch (error) {
-										// Record not found, will create new one if createIfNotFound is true
-									}
-								} else {
-									// Search by field value using API filtering for better performance
-									existingRecords = [];
-									
-									
-									// Use DatoCMS API filtering for efficient field-based search
-									const filterParams = {
-										filter: {
-											type: upsertItemTypeId,
-											fields: {
-												[fieldToMatchOn]: {
-													eq: matchValue
-												}
+								// Search by field value using API filtering for better performance
+								existingRecords = [];
+								
+								// Use DatoCMS API filtering for efficient field-based search
+								const filterParams = {
+									filter: {
+										type: upsertItemTypeId,
+										fields: {
+											[fieldToMatchOn]: {
+												eq: matchValue
 											}
-										},
-										version: 'current', // Include draft records, not just published ones
-										perPage: 100,
-									};
-									
-									
-									const recordsIterator = client.items.listPagedIterator(filterParams);
-									
-									// Collect all matching records (should be few due to API filtering)
-									for await (const record of recordsIterator) {
-										existingRecords.push(record);
-									}
-									
+										}
+									},
+									version: 'current', // Include draft records, not just published ones
+									perPage: 100,
+								};
+								
+								const recordsIterator = client.items.listPagedIterator(filterParams);
+								
+								// Collect all matching records (should be few due to API filtering)
+								for await (const record of recordsIterator) {
+									existingRecords.push(record);
 								}
 							} catch (error) {
 								throw new NodeOperationError(this.getNode(), `Failed to search for existing records: ${error.message}`);
