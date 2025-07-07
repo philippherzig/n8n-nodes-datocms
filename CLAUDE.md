@@ -63,9 +63,10 @@ n8n-nodes-datocms/
 
 #### Records Resource
 - `create`: Create new content records with ResourceMapper field interface and auto-publish option
+- `upsert`: Create or update records using field-based matching (e.g., external ID, slug) with optimized API filtering for performance
 - `get`: Retrieve single record by ID
 - `getAll`: List all records filtered by content type
-- `update`: Update existing records with ResourceMapper field interface and auto-publish option
+- `update`: Update existing records by Record ID with ResourceMapper field interface and auto-publish option
 - `delete`: Remove records
 - `publish`: Publish draft records
 - `unpublish`: Unpublish live records
@@ -152,6 +153,17 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
    - Localized fields: Use JSON format like `{"en": "My Post", "de": "Mein Beitrag"}`
 5. Auto Publish: ✅
 
+#### Syncing External Data (Create or Update)
+1. Resource: Record
+2. Operation: Create or Update
+3. Item Type: [Select from dropdown]
+4. Field to Match On: [Select field like "external_id", "slug", or any unique field]
+5. Fields: Use ResourceMapper to map fields visually
+6. Create If Not Found: ✅ (default: true)
+7. Auto Publish: ✅ (optional)
+
+This is perfect for sync processes where you have external IDs and want to update existing records or create new ones if they don't exist. The operation uses optimized API filtering for fast performance, even with large datasets, and includes both draft and published records in the search.
+
 #### Uploading an Image
 **From Binary Data:**
 1. Resource: Upload
@@ -233,6 +245,18 @@ Set these in your DatoCMS project:
 - Always rebuild (`npm run build`) after making code changes
 - Restart n8n completely after rebuilding to load new changes
 
+## Recent Improvements
+
+### Performance Optimizations ✅
+- **Optimized Upsert Performance**: The upsert operation now uses DatoCMS API filtering instead of client-side search, dramatically improving performance for large datasets
+- **Draft Record Support**: Upsert operations now include both draft and published records in searches using `version: 'current'`
+- **Efficient Field Matching**: Direct API filtering by field values eliminates the need to fetch and iterate through all records
+
+### UI/UX Improvements ✅
+- **Clean Operation Separation**: Update and Upsert operations have distinct, appropriate interfaces
+- **Consistent Naming**: All operations follow consistent "Record [Action]" naming convention
+- **Simplified Field Mapping**: ResourceMapper modes optimized for each operation type
+
 ## Future Enhancements
 
 ### Potential Features
@@ -242,10 +266,9 @@ Set these in your DatoCMS project:
 - **Enhanced Validation**: Field validation based on DatoCMS model constraints
 - **Localization UI**: Visual interface for localized content (beyond JSON)
 
-### Performance Optimizations
+### Additional Performance Optimizations
 - **Caching**: Cache content type metadata
 - **Batching**: Batch multiple API calls
-- **Pagination**: Handle large datasets efficiently
 
 ## Contributing
 
