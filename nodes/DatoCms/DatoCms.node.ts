@@ -5,6 +5,7 @@ import {
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
+	INodeListSearchResult,
 	NodeConnectionType,
 	NodeOperationError,
 	ResourceMapperFields,
@@ -169,18 +170,33 @@ export class DatoCms implements INodeType {
 			{
 				displayName: 'Item Type',
 				name: 'itemType',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getItemTypes',
-				},
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
+				required: true,
 				displayOptions: {
 					show: {
 						resource: ['record'],
 						operation: ['create', 'getAll', 'get', 'update', 'delete', 'publish', 'unpublish'],
 					},
 				},
-				default: '',
-				required: true,
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						placeholder: 'Select an item type...',
+						typeOptions: {
+							searchListMethod: 'searchItemTypes',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By ID',
+						name: 'id',
+						type: 'string',
+						placeholder: 'e.g., JTmoQFnWTnKr8Dr96Fem3w',
+					},
+				],
 				description: 'The item type to work with',
 			},
 			// Record ID field
@@ -326,33 +342,63 @@ export class DatoCms implements INodeType {
 			{
 				displayName: 'Upload Collection',
 				name: 'uploadCollection',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getUploadCollections',
-				},
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
 				displayOptions: {
 					show: {
 						resource: ['upload'],
 						operation: ['create'],
 					},
 				},
-				default: '',
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						placeholder: 'Select a collection...',
+						typeOptions: {
+							searchListMethod: 'searchUploadCollections',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By ID',
+						name: 'id',
+						type: 'string',
+						placeholder: 'e.g., AbC123dEf456GhI789',
+					},
+				],
 				description: 'Optional: Upload collection to organize the upload',
 			},
 			{
 				displayName: 'Filter by Collection',
 				name: 'filterByCollection',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getUploadCollections',
-				},
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
 				displayOptions: {
 					show: {
 						resource: ['upload'],
 						operation: ['getAll'],
 					},
 				},
-				default: '',
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						placeholder: 'Select a collection...',
+						typeOptions: {
+							searchListMethod: 'searchUploadCollections',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By ID',
+						name: 'id',
+						type: 'string',
+						placeholder: 'e.g., AbC123dEf456GhI789',
+					},
+				],
 				description: 'Optional: Filter uploads by collection (client-side filtering). Note: DatoCMS API doesn\'t support server-side collection filtering.',
 			},
 			{
@@ -427,8 +473,8 @@ export class DatoCms implements INodeType {
 	};
 
 	methods = {
-		loadOptions: {
-			async getItemTypes(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+		listSearch: {
+			async searchItemTypes(this: ILoadOptionsFunctions, filter?: string): Promise<INodeListSearchResult> {
 				const credentials = await this.getCredentials('datoCmsApi');
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
@@ -438,14 +484,70 @@ export class DatoCms implements INodeType {
 				try {
 					const itemTypes = await client.itemTypes.list();
 					
-					return itemTypes.map((itemType) => ({
-						name: itemType.name,
-						value: itemType.id,
-					}));
+					const results = itemTypes
+						.filter((itemType) => !filter || itemType.name.toLowerCase().includes(filter.toLowerCase()))
+						.map((itemType) => ({
+							name: itemType.name,
+							value: itemType.id,
+						}));
+
+					return {
+						results,
+					};
 				} catch (error) {
 					throw new NodeOperationError(this.getNode(), `Failed to load item types: ${error.message}`);
 				}
 			},
+
+			async searchUploadCollections(this: ILoadOptionsFunctions, filter?: string): Promise<INodeListSearchResult> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+				});
+
+				try {
+					const uploadCollections = await client.uploadCollections.list();
+					
+					// Add a "None" option as the first choice
+					const results: INodePropertyOptions[] = [
+						{
+							name: '(None)',
+							value: '',
+						},
+					];
+					
+					// Add upload collections with filter
+					const filteredCollections = uploadCollections
+						.filter((collection) => !filter || collection.label.toLowerCase().includes(filter.toLowerCase()))
+						.map((collection) => ({
+							name: collection.label,
+							value: collection.id,
+						}));
+					
+					results.push(...filteredCollections);
+
+					return {
+						results,
+					};
+				} catch (error) {
+					// Graceful degradation: If upload collections are not accessible,
+					// return only the "None" option so upload still works
+					if (error.message && (error.message.includes('INSUFFICIENT_PERMISSIONS') || error.message.includes('401'))) {
+						return {
+							results: [
+								{
+									name: '(None - Upload Collections not accessible)',
+									value: '',
+								},
+							],
+						};
+					}
+					throw new NodeOperationError(this.getNode(), `Failed to load upload collections: ${error.message}`);
+				}
+			},
+		},
+		loadOptions: {
 
 			async getUploadCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const credentials = await this.getCredentials('datoCmsApi');
@@ -509,9 +611,17 @@ export class DatoCms implements INodeType {
 		resourceMapping: {
 			async getModelFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
 				const credentials = await this.getCredentials('datoCmsApi');
-				const itemType = this.getNodeParameter('itemType') as string;
+				const itemTypeParam = this.getNodeParameter('itemType') as any;
 				
-				if (!itemType) {
+				// Extract the value from resource locator
+				let itemType = itemTypeParam?.value || itemTypeParam;
+				
+				// Handle resource locator structure
+				if (typeof itemTypeParam === 'object' && itemTypeParam !== null) {
+					itemType = itemTypeParam.value;
+				}
+				
+				if (!itemType || itemType === '') {
 					throw new NodeOperationError(this.getNode(), 'Please select an Item Type first');
 				}
 
@@ -605,7 +715,9 @@ export class DatoCms implements INodeType {
 				let responseData;
 
 				if (resource === 'record') {
-					const itemType = this.getNodeParameter('itemType', i) as string;
+					const itemTypeParam = this.getNodeParameter('itemType', i) as any;
+					// Extract the value from resource locator
+					const itemType = itemTypeParam?.value || itemTypeParam;
 
 					switch (operation) {
 						case 'create':
@@ -758,7 +870,9 @@ export class DatoCms implements INodeType {
 						case 'create':
 							const uploadSource = this.getNodeParameter('uploadSource', i) as string;
 							const skipCreationIfAlreadyExists = this.getNodeParameter('skipCreationIfAlreadyExists', i) as boolean;
-						const uploadCollection = this.getNodeParameter('uploadCollection', i) as string;
+						const uploadCollectionParam = this.getNodeParameter('uploadCollection', i) as any;
+						// Extract the value from resource locator
+						const uploadCollection = uploadCollectionParam?.value !== undefined ? uploadCollectionParam.value : (typeof uploadCollectionParam === 'object' && uploadCollectionParam !== null ? uploadCollectionParam.value : uploadCollectionParam);
 							
 							if (uploadSource === 'binary') {
 								const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
@@ -822,7 +936,9 @@ export class DatoCms implements INodeType {
 						case 'getAll':
 							const returnAllUploads = this.getNodeParameter('returnAll', i) as boolean;
 							const limitUploads = this.getNodeParameter('limit', i, 50) as number;
-							const filterByCollection = this.getNodeParameter('filterByCollection', i) as string;
+							const filterByCollectionParam = this.getNodeParameter('filterByCollection', i) as any;
+							// Extract the value from resource locator
+							const filterByCollection = filterByCollectionParam?.value !== undefined ? filterByCollectionParam.value : (typeof filterByCollectionParam === 'object' && filterByCollectionParam !== null ? filterByCollectionParam.value : filterByCollectionParam);
 							
 							// Since DatoCMS API doesn't support server-side collection filtering,
 							// we'll do client-side filtering after fetching the uploads
