@@ -176,7 +176,7 @@ export class DatoCms implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['record'],
-						operation: ['create', 'getAll', 'get', 'update', 'delete', 'publish', 'unpublish'],
+						operation: ['create', 'getAll', 'update', 'delete', 'publish', 'unpublish'],
 					},
 				},
 				modes: [
@@ -750,9 +750,13 @@ export class DatoCms implements INodeType {
 				let responseData;
 
 				if (resource === 'record') {
-					const itemTypeParam = this.getNodeParameter('itemType', i) as any;
-					// Extract the value from resource locator
-					const itemType = itemTypeParam?.value || itemTypeParam;
+					// Only get itemType for operations that need it
+					let itemType: string | undefined;
+					if (operation !== 'get') {
+						const itemTypeParam = this.getNodeParameter('itemType', i) as any;
+						// Extract the value from resource locator
+						itemType = itemTypeParam?.value || itemTypeParam;
+					}
 
 					switch (operation) {
 						case 'create':
