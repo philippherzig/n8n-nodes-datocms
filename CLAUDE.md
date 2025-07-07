@@ -10,6 +10,8 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 - **Complete CRUD Operations** for DatoCMS records (Create, Read, Update, Delete)
 - **File Upload Management** with automatic record linking
 - **Dynamic Content Type Selection** via dropdown (no manual ID entry required)
+- **Dynamic Field Mapping** via ResourceMapper (no JSON required for most fields)
+- **Localized Fields Support** with automatic detection and JSON format guidance
 - **Auto-publish functionality** for streamlined workflows
 - **Item Type Management** for exploring content models
 - **Robust error handling** with continue-on-fail support
@@ -17,6 +19,8 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 ### 🎯 Main Benefits
 - **Simplified for Non-Techies**: No complex HTTP requests needed
 - **Dynamic Field Loading**: Content types and fields populated automatically
+- **ResourceMapper Integration**: Visual field mapping interface eliminates JSON complexity
+- **Automatic Localization Support**: Localized fields detected and marked automatically
 - **Multi-Step Operations**: Complex workflows abstracted into single actions
 - **Intuitive UX**: Dropdown selections instead of manual ID entry
 - **Proper Array Handling**: GetAll operations return each item as separate n8n workflow items
@@ -48,10 +52,10 @@ n8n-nodes-datocms/
 ### Resources & Operations
 
 #### Records Resource
-- `create`: Create new content records with auto-publish option
+- `create`: Create new content records with ResourceMapper field interface and auto-publish option
 - `get`: Retrieve single record by ID
 - `getAll`: List all records filtered by content type
-- `update`: Update existing records with auto-publish option
+- `update`: Update existing records with ResourceMapper field interface and auto-publish option
 - `delete`: Remove records
 - `publish`: Publish draft records
 - `unpublish`: Unpublish live records
@@ -68,6 +72,8 @@ n8n-nodes-datocms/
 
 ### Dynamic Features
 - **loadOptions Method**: Automatically populates content type dropdowns from DatoCMS API
+- **ResourceMapper Integration**: Automatically loads field schemas for visual mapping
+- **Localization Detection**: Automatically detects and marks localized fields
 - **Environment Support**: Works with DatoCMS environments (main, sandbox, etc.)
 - **Binary Data Handling**: Supports file uploads through n8n's binary data system
 
@@ -131,7 +137,9 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
 1. Resource: Record
 2. Operation: Create
 3. Item Type: [Select from dropdown]
-4. Fields: `{"title": "My Post", "content": "Post content"}`
+4. Fields: Use ResourceMapper to map fields visually:
+   - Regular fields: Enter values directly
+   - Localized fields: Use JSON format like `{"en": "My Post", "de": "Mein Beitrag"}`
 5. Auto Publish: ✅
 
 #### Uploading an Image
@@ -157,6 +165,21 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
 3. Return All: ✅ (or set limit)
 4. Filter by Collection: [Optional: Select specific collection]
 5. Returns only uploads from the selected collection
+
+#### Working with Localized Fields
+When your DatoCMS model has localized fields (multi-language content):
+
+1. **Field Detection**: Localized fields are automatically detected and marked with "(Localized)" in the field name
+2. **JSON Format**: Use JSON format to provide content for each locale:
+   ```json
+   {
+     "en": "English content",
+     "de": "German content", 
+     "it": "Italian content"
+   }
+   ```
+3. **Auto-parsing**: The node automatically converts JSON strings to the correct DatoCMS format
+4. **Minimalist Approach**: Only localized fields require special handling; regular fields work as normal
 
 ## Configuration
 
@@ -188,11 +211,11 @@ Set these in your DatoCMS project:
 ## Future Enhancements
 
 ### Potential Features
-- **Dynamic Field Generation**: Auto-generate form fields based on content model
+- **Advanced Field Types**: Better support for complex field types (structured text, modular content)
 - **Bulk Operations**: Handle multiple records in single operation
 - **Advanced Relationships**: Better handling of linked records
-- **Validation**: Field validation based on DatoCMS model constraints
-- **Localization**: Support for multi-language content
+- **Enhanced Validation**: Field validation based on DatoCMS model constraints
+- **Localization UI**: Visual interface for localized content (beyond JSON)
 
 ### Performance Optimizations
 - **Caching**: Cache content type metadata

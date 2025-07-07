@@ -7,6 +7,8 @@ import {
 	INodeTypeDescription,
 	NodeConnectionType,
 	NodeOperationError,
+	ResourceMapperFields,
+	FieldType,
 } from 'n8n-workflow';
 import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
@@ -196,19 +198,59 @@ export class DatoCms implements INodeType {
 				required: true,
 				description: 'The ID of the record',
 			},
-			// Fields for record creation/update
+			// Fields for record creation
 			{
 				displayName: 'Fields',
 				name: 'fields',
-				type: 'json',
+				type: 'resourceMapper',
+				noDataExpression: true,
 				displayOptions: {
 					show: {
 						resource: ['record'],
-						operation: ['create', 'update'],
+						operation: ['create'],
 					},
 				},
-				default: '{}',
-				description: 'Record fields as JSON object',
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				typeOptions: {
+					resourceMapper: {
+						resourceMapperMethod: 'getModelFields',
+						mode: 'add',
+						valuesLabel: 'Fields',
+						addAllFields: true,
+						multiKeyMatch: false,
+					},
+				},
+				description: 'Fields to set for the new record',
+			},
+			// Fields for record update
+			{
+				displayName: 'Fields',
+				name: 'fields',
+				type: 'resourceMapper',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['update'],
+					},
+				},
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				typeOptions: {
+					resourceMapper: {
+						resourceMapperMethod: 'getModelFields',
+						mode: 'update',
+						valuesLabel: 'Fields',
+						addAllFields: true,
+						multiKeyMatch: false,
+					},
+				},
+				description: 'Fields to update in the record',
 			},
 			// Upload fields
 			{
@@ -444,6 +486,104 @@ export class DatoCms implements INodeType {
 					throw new NodeOperationError(this.getNode(), `Failed to load upload collections: ${error.message}`);
 				}
 			},
+
+			async getSiteLocales(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+				});
+
+				try {
+					const site = await client.site.find();
+					
+					return site.locales.map((locale) => ({
+						name: locale,
+						value: locale,
+					}));
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Failed to load site locales: ${error.message}`);
+				}
+			},
+		},
+		resourceMapping: {
+			async getModelFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const itemType = this.getNodeParameter('itemType') as string;
+				
+				if (!itemType) {
+					throw new NodeOperationError(this.getNode(), 'Please select an Item Type first');
+				}
+
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+				});
+
+				try {
+					// Get all fields for this item type
+					const fields = await client.fields.list(itemType);
+					
+					const mappedFields: ResourceMapperFields = {
+						fields: []
+					};
+					
+
+					// Map DatoCMS field types to n8n field types
+					const fieldTypeMapping: { [key: string]: FieldType } = {
+						'string': 'string',
+						'text': 'string',
+						'slug': 'string',
+						'color': 'string',
+						'integer': 'number',
+						'float': 'number',
+						'boolean': 'boolean',
+						'date': 'dateTime',
+						'date_time': 'dateTime',
+						'json': 'string',
+						'lat_lon': 'string',
+						'seo': 'string',
+						'structured_text': 'string',
+						'link': 'string',
+						'links': 'array',
+						'file': 'string',
+						'gallery': 'array',
+						'single_block': 'string',
+						'modular_content': 'array',
+					};
+					
+
+					for (const field of fields) {
+						// Skip system fields and non-editable fields
+						if (field.api_key === 'id' || field.api_key === 'created_at' || field.api_key === 'updated_at') {
+							continue;
+						}
+
+						const fieldType = fieldTypeMapping[field.field_type] || 'string';
+						const isLocalized = field.localized === true;
+						
+						// For localized fields, show (Localized) in display name
+						const displayName = isLocalized 
+							? `${field.label} (Localized)`
+							: field.label;
+						
+						mappedFields.fields.push({
+							id: field.api_key,
+							displayName: displayName,
+							type: isLocalized ? 'string' : fieldType, // Use string type for localized fields to allow JSON input
+							required: (field.validators as any)?.required?.value === true,
+							defaultMatch: false,
+							canBeUsedToMatch: true,
+							display: true,
+							removed: false,
+						});
+					}
+
+					return mappedFields;
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Failed to load model fields: ${error.message}`);
+				}
+			},
 		},
 	};
 
@@ -469,12 +609,40 @@ export class DatoCms implements INodeType {
 
 					switch (operation) {
 						case 'create':
-							const createFields = this.getNodeParameter('fields', i) as string;
+							const createFields = this.getNodeParameter('fields', i) as any;
 							const additionalFields = this.getNodeParameter('additionalFields', i, {}) as any;
 							
-							const recordData = {
-								item_type: { id: itemType, type: 'item_type' },
-								...JSON.parse(createFields),
+							// Handle resourceMapper data
+							let fieldData: any = {};
+							if (createFields.mappingMode === 'defineBelow' && createFields.value) {
+								// Convert resourceMapper format to DatoCMS format
+								fieldData = { ...createFields.value };
+								
+								// Parse any JSON strings that might be localized fields
+								for (const [key, value] of Object.entries(fieldData)) {
+									// Skip helper fields
+									if (key.startsWith('_') && key.includes('helper')) {
+										delete fieldData[key];
+										continue;
+									}
+									
+									if (typeof value === 'string' && value.trim().startsWith('{')) {
+										try {
+											fieldData[key] = JSON.parse(value);
+										} catch (e) {
+											// If it's not valid JSON, keep it as a string
+										}
+									}
+								}
+							} else if (createFields.mappingMode === 'autoMapInputData') {
+								// Auto-map from input data
+								const inputData = items[i].json;
+								fieldData = inputData;
+							}
+							
+							const recordData: any = {
+								item_type: { id: itemType, type: 'item_type' as const },
+								...fieldData,
 							};
 
 							responseData = await client.items.create(recordData);
@@ -532,14 +700,38 @@ export class DatoCms implements INodeType {
 
 						case 'update':
 							const updateRecordId = this.getNodeParameter('recordId', i) as string;
-							const updateFields = this.getNodeParameter('fields', i) as string;
+							const updateFields = this.getNodeParameter('fields', i) as any;
 							const updateAdditionalFields = this.getNodeParameter('additionalFields', i, {}) as any;
 							
-							const updateData = {
-								...JSON.parse(updateFields),
-							};
+							// Handle resourceMapper data
+							let updateFieldData: any = {};
+							if (updateFields.mappingMode === 'defineBelow' && updateFields.value) {
+								// Convert resourceMapper format to DatoCMS format
+								updateFieldData = { ...updateFields.value };
+								
+								// Parse any JSON strings that might be localized fields
+								for (const [key, value] of Object.entries(updateFieldData)) {
+									// Skip helper fields
+									if (key.startsWith('_') && key.includes('helper')) {
+										delete updateFieldData[key];
+										continue;
+									}
+									
+									if (typeof value === 'string' && value.trim().startsWith('{')) {
+										try {
+											updateFieldData[key] = JSON.parse(value);
+										} catch (e) {
+											// If it's not valid JSON, keep it as a string
+										}
+									}
+								}
+							} else if (updateFields.mappingMode === 'autoMapInputData') {
+								// Auto-map from input data
+								const inputData = items[i].json;
+								updateFieldData = inputData;
+							}
 
-							responseData = await client.items.update(updateRecordId, updateData);
+							responseData = await client.items.update(updateRecordId, updateFieldData);
 							
 							if (updateAdditionalFields.autoPublish) {
 								responseData = await client.items.publish(responseData.id);
