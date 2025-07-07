@@ -74,42 +74,49 @@ export class DatoCms implements INodeType {
 						name: 'Create',
 						value: 'create',
 						description: 'Create a new record',
+						action: 'Create a record',
 					},
 					{
-						name: 'Upsert',
+						name: 'Create or Update',
 						value: 'upsert',
-						description: 'Create a new record, or update the current one if it already exists',
-						action: 'Record Upsert',
+						description: 'Create a new record, or update the current one if it already exists (upsert)',
+						action: 'Record upsert',
 					},
 					{
 						name: 'Delete',
 						value: 'delete',
 						description: 'Delete a record',
+						action: 'Delete a record',
 					},
 					{
 						name: 'Get',
 						value: 'get',
 						description: 'Get a record',
+						action: 'Get a record',
 					},
 					{
-						name: 'Get All',
+						name: 'Get Many',
 						value: 'getAll',
-						description: 'Get all records',
+						description: 'Get many records',
+						action: 'Get many records',
 					},
 					{
 						name: 'Update',
 						value: 'update',
 						description: 'Update a record',
+						action: 'Update a record',
 					},
 					{
 						name: 'Publish',
 						value: 'publish',
 						description: 'Publish a record',
+						action: 'Publish a record',
 					},
 					{
 						name: 'Unpublish',
 						value: 'unpublish',
 						description: 'Unpublish a record',
+						action: 'Unpublish a record',
 					},
 				],
 				default: 'create',
@@ -129,21 +136,25 @@ export class DatoCms implements INodeType {
 						name: 'Create',
 						value: 'create',
 						description: 'Upload a file',
+						action: 'Create an upload',
 					},
 					{
 						name: 'Get',
 						value: 'get',
 						description: 'Get an upload',
+						action: 'Get an upload',
 					},
 					{
-						name: 'Get All',
+						name: 'Get Many',
 						value: 'getAll',
-						description: 'Get all uploads',
+						description: 'Get many uploads',
+						action: 'Get many uploads',
 					},
 					{
 						name: 'Delete',
 						value: 'delete',
 						description: 'Delete an upload',
+						action: 'Delete an upload',
 					},
 				],
 				default: 'create',
@@ -160,14 +171,16 @@ export class DatoCms implements INodeType {
 				},
 				options: [
 					{
-						name: 'Get All',
+						name: 'Get Many',
 						value: 'getAll',
-						description: 'Get all item types',
+						description: 'Get many item types',
+						action: 'Get many item types',
 					},
 					{
 						name: 'Get',
 						value: 'get',
 						description: 'Get an item type',
+						action: 'Get an item type',
 					},
 				],
 				default: 'getAll',
@@ -343,7 +356,7 @@ export class DatoCms implements INodeType {
 					},
 				},
 				default: true,
-				description: 'If enabled, skip creating a new upload if a file with the same content already exists in DatoCMS',
+				description: 'Whether to skip creating a new upload if a file with the same content already exists in DatoCMS',
 			},
 			{
 				displayName: 'Upload Collection',
@@ -375,6 +388,19 @@ export class DatoCms implements INodeType {
 					},
 				],
 				description: 'Optional: Upload collection to organize the upload',
+			},
+			{
+				displayName: 'Include Other Input Fields',
+				name: 'includeOtherInputFields',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['create'],
+					},
+				},
+				default: false,
+				description: 'Whether to pass to the output all the input fields (along with the fields set in \'Upload\')',
 			},
 			{
 				displayName: 'Filter by Collection',
@@ -433,7 +459,7 @@ export class DatoCms implements INodeType {
 					},
 				},
 				default: false,
-				description: 'Whether to return all results or limit the number of results returned',
+				description: 'Whether to return all results or only up to a given limit',
 			},
 			{
 				displayName: 'Limit',
@@ -448,10 +474,9 @@ export class DatoCms implements INodeType {
 				},
 				typeOptions: {
 					minValue: 1,
-					maxValue: 500,
 				},
 				default: 50,
-				description: 'Maximum number of items to return',
+				description: 'Max number of results to return',
 			},
 			{
 				displayName: 'Fields',
@@ -591,7 +616,7 @@ export class DatoCms implements INodeType {
 						return {
 							results: [
 								{
-									name: '(None - Upload Collections not accessible)',
+									name: '(None - Upload Collections Not Accessible)',
 									value: '',
 								},
 							],
@@ -634,7 +659,7 @@ export class DatoCms implements INodeType {
 					if (error.message && (error.message.includes('INSUFFICIENT_PERMISSIONS') || error.message.includes('401'))) {
 						return [
 							{
-								name: '(None - Upload Collections not accessible)',
+								name: '(None - Upload Collections Not Accessible)',
 								value: '',
 							},
 						];
@@ -1092,6 +1117,7 @@ export class DatoCms implements INodeType {
 						case 'create':
 							const uploadSource = this.getNodeParameter('uploadSource', i) as string;
 							const skipCreationIfAlreadyExists = this.getNodeParameter('skipCreationIfAlreadyExists', i) as boolean;
+							const includeOtherInputFields = this.getNodeParameter('includeOtherInputFields', i) as boolean;
 						const uploadCollectionParam = this.getNodeParameter('uploadCollection', i) as any;
 						// Extract the value from resource locator
 						const uploadCollection = uploadCollectionParam?.value !== undefined ? uploadCollectionParam.value : (typeof uploadCollectionParam === 'object' && uploadCollectionParam !== null ? uploadCollectionParam.value : uploadCollectionParam);
@@ -1132,7 +1158,7 @@ export class DatoCms implements INodeType {
 								const fileUrl = this.getNodeParameter('fileUrl', i) as string;
 								
 								if (!fileUrl) {
-									throw new Error('File URL is required when using URL upload source');
+									throw new NodeOperationError(this.getNode(), 'File URL is required when using URL upload source');
 								}
 								
 								responseData = await client.uploads.createFromUrl({
@@ -1146,7 +1172,16 @@ export class DatoCms implements INodeType {
 									} : {})
 								});
 							} else {
-								throw new Error('Invalid upload source specified');
+								throw new NodeOperationError(this.getNode(), 'Invalid upload source specified');
+							}
+							
+							// Merge input data if the option is enabled
+							if (includeOtherInputFields) {
+								const inputData = items[i].json;
+								responseData = {
+									...inputData,
+									...responseData,
+								};
 							}
 							break;
 

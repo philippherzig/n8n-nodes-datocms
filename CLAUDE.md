@@ -8,7 +8,7 @@ This is a custom n8n node for DatoCMS integration that simplifies content manage
 
 ### ✅ Implemented Features
 - **Complete CRUD Operations** for DatoCMS records (Create, Read, Update, Delete)
-- **File Upload Management** with automatic record linking
+- **File Upload Management** with automatic record linking and input field preservation
 - **Dynamic Content Type Selection** via dropdown (no manual ID entry required)
 - **Dynamic Field Mapping** via ResourceMapper (no JSON required for most fields)
 - **Enhanced Field Validation & Display**:
@@ -178,7 +178,8 @@ This is perfect for sync processes where you have external/business IDs and want
 2. Operation: Create
 3. Upload Source: Binary Data
 4. Binary Property: data
-5. The uploaded file can then be linked to records
+5. Include Other Input Fields: ✅ (optional - preserves input data for mapping)
+6. The uploaded file can then be linked to records
 
 **From URL:**
 1. Resource: Upload
@@ -187,7 +188,8 @@ This is perfect for sync processes where you have external/business IDs and want
 4. File URL: https://example.com/image.jpg
 5. Skip Creation If Already Exists: ✅ (default)
 6. Upload Collection: [Optional: Select from dropdown]
-7. The uploaded file can then be linked to records
+7. Include Other Input Fields: ✅ (optional - preserves input data for mapping)
+8. The uploaded file can then be linked to records
 
 #### Filtering Uploads by Collection
 1. Resource: Upload
@@ -195,6 +197,24 @@ This is perfect for sync processes where you have external/business IDs and want
 3. Return All: ✅ (or set limit)
 4. Filter by Collection: [Optional: Select specific collection]
 5. Returns only uploads from the selected collection
+
+#### Upload Input Field Mapping
+The upload create operation includes an **"Include Other Input Fields"** option that allows you to preserve input data alongside the DatoCMS upload response. This is particularly useful for mapping workflows where you need to correlate input data (like source URLs) with the resulting DatoCMS upload IDs.
+
+**Example Use Case:**
+- **Input**: `{ "source_url": "https://example.com/image.jpg", "category": "blog", "alt_text": "My Image" }`
+- **Upload**: Creates DatoCMS upload from the URL
+- **Output**: `{ "source_url": "https://example.com/image.jpg", "category": "blog", "alt_text": "My Image", "id": "upload_123", "url": "https://datocms.com/uploads/...", ... }`
+
+This enables you to:
+1. **Map URLs to IDs**: Connect original source URLs to DatoCMS upload IDs
+2. **Preserve Metadata**: Keep additional information (categories, alt text, etc.) from the input
+3. **Enable Complex Workflows**: Build multi-step processes that reference both input and output data
+
+**How to Use:**
+1. Enable "Include Other Input Fields" in the upload create operation
+2. The original input fields will be merged with the DatoCMS response
+3. DatoCMS fields take precedence in case of field name conflicts
 
 #### Working with Special Field Types
 
@@ -268,6 +288,13 @@ Set these in your DatoCMS project:
 - **Clean Operation Separation**: Update (internal ID) and Upsert (external ID) operations have distinct, appropriate interfaces
 - **Consistent Naming**: All operations follow consistent "Record [Action]" naming convention, with "Upsert" replacing "Create or Update"
 - **Auto-Reload Support**: ResourceMapper automatically reloads matching field options when fields are refreshed
+
+### Upload Workflow Improvements ✅
+- **Include Other Input Fields**: Upload create operation now supports preserving input data alongside DatoCMS upload response
+- **URL-to-ID Mapping**: Enables mapping workflows where input URLs can be correlated with resulting DatoCMS upload IDs
+- **Metadata Preservation**: Original input fields (categories, alt text, etc.) are maintained in the output
+- **Complex Workflow Support**: Multi-step processes can reference both input and output data
+- **n8n Set Node Pattern**: Follows the same UX pattern as n8n's standard Set node for consistency
 
 ## Future Enhancements
 
