@@ -65,7 +65,7 @@ n8n-nodes-datocms/
 - `create`: Create new content records with ResourceMapper field interface and auto-publish option
 - `upsert`: Create or update records using external/business field matching (e.g., external ID, slug, SKU) with integrated ResourceMapper matching field selection - optimized for business identifiers, not internal DatoCMS IDs
 - `get`: Retrieve single record by ID
-- `getAll`: List all records filtered by content type
+- `getAll`: List all records filtered by content type with advanced field filtering
 - `update`: Update existing records by internal DatoCMS Record ID with ResourceMapper field interface and auto-publish option
 - `delete`: Remove records
 - `publish`: Publish draft records
@@ -143,6 +143,49 @@ The node will appear as "datocms" (not "n8n-nodes-datocms") in the n8n interface
 5. **Configure parameters** using the dynamic dropdowns
 
 ### Example Workflows
+
+#### Filtering Records (Get Many)
+The Get Many operation now supports advanced filtering by field values, allowing you to search for specific records based on custom fields or system fields.
+
+**Example: Find records by external ID**
+1. Resource: Record
+2. Operation: Get Many
+3. Item Type: [Select from dropdown]
+4. Add Filter:
+   - Field: external_id
+   - Operator: Equals
+   - Value: ABC123
+
+**Example: Find recently updated records**
+1. Resource: Record
+2. Operation: Get Many
+3. Item Type: [Select from dropdown]
+4. Add Filter:
+   - Field: Updated At
+   - Operator: Greater Than
+   - Value: 2024-01-01T00:00:00
+
+**Example: Find records with specific status**
+1. Resource: Record
+2. Operation: Get Many
+3. Item Type: [Select from dropdown]
+4. Add Filter:
+   - Field: status
+   - Operator: In
+   - Value: active, pending
+
+**Available Operators:**
+- **Equals**: Exact match
+- **Not Equals**: Does not match
+- **Greater Than/Less Than**: For numbers and dates
+- **In/Not In**: Match any/none of comma-separated values
+- **Exists**: Field has a value (not null)
+
+**Filterable Fields:**
+- All system fields (ID, Created At, Updated At, Status, etc.)
+- All custom fields except Modular Content and Structured Text
+- Localized fields are supported
+- Fields marked as (Unique) for easy identification
 
 #### Creating a Blog Post
 1. Resource: Record
@@ -274,6 +317,24 @@ Set these in your DatoCMS project:
 - Restart n8n completely after rebuilding to load new changes
 
 ## Recent Improvements
+
+### Advanced Field Filtering for Get Many Records ✅
+- **Filter Builder UI**: New visual interface for building complex filters on Get Many records operation
+- **Dynamic Field Selection**: Dropdown automatically populated with all filterable fields from the selected item type
+- **Multiple Operators**: Support for Equals, Not Equals, Greater Than, Less Than, In, Not In, and Exists operators
+- **System Fields Support**: Filter by ID, Created At, Updated At, Published At, Status, and Is Valid
+- **Smart Field Detection**: Automatically excludes non-filterable fields (Modular Content, Structured Text)
+- **Field Metadata**: Shows field attributes (Localized, Unique) in dropdown for easy identification
+- **Multiple Filters**: Add multiple filter conditions to narrow down results
+- **Comma-Separated Values**: Support for "In" and "Not In" operators with multiple values
+
+### Improved Input-Output Pairing for Get Many Operations ✅
+- **Results Array Structure**: All "Get Many" operations now return a consistent structure with a `results` array
+- **Maintains Input-Output Pairing**: Each input item always produces exactly one output item, even when no results are found
+- **Query Metadata**: Output includes query information (filters, limits, etc.) for debugging and tracking
+- **Count Field**: Shows the number of results found for each query
+- **Empty Results Handling**: Returns `{ results: [], count: 0, query: {...} }` when no matches found
+- **Better Workflow Control**: Enables proper mapping between inputs and outputs in complex workflows
 
 ### Performance Optimizations ✅
 - **Optimized Upsert Performance**: The upsert operation now uses DatoCMS API filtering instead of client-side search, dramatically improving performance for large datasets

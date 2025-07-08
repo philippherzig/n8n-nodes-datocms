@@ -447,6 +447,109 @@ export class DatoCms implements INodeType {
 				required: true,
 				description: 'The ID of the upload',
 			},
+			// Additional options for Get Many records
+			{
+				displayName: 'Filters',
+				name: 'filters',
+				type: 'fixedCollection',
+				placeholder: 'Add Filter',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['getAll'],
+					},
+				},
+				description: 'Filter records by field values',
+				typeOptions: {
+					multipleValues: true,
+				},
+				options: [
+					{
+						name: 'filter',
+						displayName: 'Filter',
+						values: [
+							{
+								displayName: 'Field',
+								name: 'field',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getFilterableFields',
+								},
+								default: '',
+								required: true,
+								description: 'The field to filter by',
+							},
+							{
+								displayName: 'Operator',
+								name: 'operator',
+								type: 'options',
+								options: [
+									{
+										name: 'Equals',
+										value: 'eq',
+										description: 'Field equals value',
+									},
+									{
+										name: 'Not Equals',
+										value: 'neq',
+										description: 'Field does not equal value',
+									},
+									{
+										name: 'Greater Than',
+										value: 'gt',
+										description: 'Field is greater than value',
+									},
+									{
+										name: 'Greater Than or Equal',
+										value: 'gte',
+										description: 'Field is greater than or equal to value',
+									},
+									{
+										name: 'Less Than',
+										value: 'lt',
+										description: 'Field is less than value',
+									},
+									{
+										name: 'Less Than or Equal',
+										value: 'lte',
+										description: 'Field is less than or equal to value',
+									},
+									{
+										name: 'In',
+										value: 'in',
+										description: 'Field matches any of the comma-separated values',
+									},
+									{
+										name: 'Not In',
+										value: 'notIn',
+										description: 'Field does not match any of the comma-separated values',
+									},
+									{
+										name: 'Exists',
+										value: 'exists',
+										description: 'Field has a value (not null)',
+									},
+								],
+								default: 'eq',
+								description: 'The comparison operator',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								displayOptions: {
+									hide: {
+										operator: ['exists'],
+									},
+								},
+								default: '',
+								description: 'The value to compare against. For "In" and "Not In" operators, use comma-separated values.',
+							},
+						],
+					},
+				],
+			},
 			// Additional options
 			{
 				displayName: 'Return All',
@@ -627,6 +730,103 @@ export class DatoCms implements INodeType {
 			},
 		},
 		loadOptions: {
+			async getFilterableFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const itemTypeParam = this.getNodeParameter('itemType') as any;
+				
+				// Extract the value from resource locator
+				let itemType = itemTypeParam?.value || itemTypeParam;
+				
+				// Handle resource locator structure
+				if (typeof itemTypeParam === 'object' && itemTypeParam !== null) {
+					itemType = itemTypeParam.value;
+				}
+				
+				if (!itemType || itemType === '') {
+					return [];
+				}
+
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+				});
+
+				try {
+					// Get all fields for this item type
+					const fields = await client.fields.list(itemType);
+					
+					// Sort fields by position to match DatoCMS schema order
+					fields.sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+					
+					const options: INodePropertyOptions[] = [];
+					
+					// Add system fields that can be filtered
+					options.push(
+						{
+							name: 'ID',
+							value: 'id',
+							description: 'Record ID',
+						},
+						{
+							name: 'Created At',
+							value: '_created_at',
+							description: 'Record creation timestamp',
+						},
+						{
+							name: 'Updated At',
+							value: '_updated_at',
+							description: 'Record last update timestamp',
+						},
+						{
+							name: 'Published At',
+							value: '_published_at',
+							description: 'Record publication timestamp',
+						},
+						{
+							name: 'First Published At',
+							value: '_first_published_at',
+							description: 'Record first publication timestamp',
+						},
+						{
+							name: 'Status',
+							value: '_status',
+							description: 'Record status (draft or published)',
+						},
+						{
+							name: 'Is Valid',
+							value: '_is_valid',
+							description: 'Whether the record is valid',
+						},
+					);
+					
+					// Add custom fields
+					for (const field of fields) {
+						// Skip fields that cannot be filtered (like modular content and structured text)
+						const fieldType = field.field_type as string;
+						if (fieldType === 'modular_content' || fieldType === 'structured_text') {
+							continue;
+						}
+						
+						let description = field.label;
+						if (field.localized) {
+							description += ' (Localized)';
+						}
+						if ((field.validators as any)?.unique) {
+							description += ' (Unique)';
+						}
+						
+						options.push({
+							name: field.label,
+							value: field.api_key,
+							description: description,
+						});
+					}
+					
+					return options;
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Failed to load filterable fields: ${error.message}`);
+				}
+			},
 
 			async getUploadCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const credentials = await this.getCredentials('datoCmsApi');
@@ -903,43 +1103,71 @@ export class DatoCms implements INodeType {
 						case 'getAll':
 							const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 							const limit = this.getNodeParameter('limit', i, 50) as number;
+							const filters = this.getNodeParameter('filters', i, {}) as any;
+							
+							// Build filter object
+							const filterParams: any = {
+								filter: {
+									type: itemType,
+								},
+							};
+							
+							// Add field filters if any
+							if (filters.filter && Array.isArray(filters.filter) && filters.filter.length > 0) {
+								filterParams.filter.fields = {};
+								
+								for (const filterItem of filters.filter) {
+									const field = filterItem.field;
+									const operator = filterItem.operator;
+									const value = filterItem.value;
+									
+									// Handle different operators
+									if (operator === 'exists') {
+										filterParams.filter.fields[field] = { exists: true };
+									} else if (operator === 'in' || operator === 'notIn') {
+										// Split comma-separated values and trim whitespace
+										const values = value.split(',').map((v: string) => v.trim());
+										filterParams.filter.fields[field] = { [operator]: values };
+									} else {
+										// For other operators, use the value directly
+										filterParams.filter.fields[field] = { [operator]: value };
+									}
+								}
+							}
+							
+							// Collect results in an array
+							const results: any[] = [];
 							
 							if (returnAll) {
 								// Use paginated iterator to get all items
-								const items = client.items.listPagedIterator({
-									filter: {
-										type: itemType,
-									},
-								});
+								const items = client.items.listPagedIterator(filterParams);
 								for await (const item of items) {
-									returnData.push({
-										json: item as any,
-										pairedItem: {
-											item: i,
-										},
-									});
+									results.push(item);
 								}
 							} else {
 								// Use regular list with pagination
 								const items = await client.items.list({
-									filter: {
-										type: itemType,
-									},
+									...filterParams,
 									page: {
 										limit: Math.min(limit, 500), // DatoCMS record limit is 500
 										offset: 0,
 									},
 								});
-								for (const item of items) {
-									returnData.push({
-										json: item as any,
-										pairedItem: {
-											item: i,
-										},
-									});
-								}
+								results.push(...items);
 							}
-							continue;
+							
+							// Always return an output item, even if no results found
+							responseData = {
+								results: results,
+								count: results.length,
+								query: {
+									itemType: itemType,
+									filters: filters.filter || [],
+									returnAll: returnAll,
+									limit: returnAll ? undefined : limit
+								}
+							};
+							break;
 
 						case 'update':
 							const updateRecordId = this.getNodeParameter('recordId', i) as string;
@@ -1197,8 +1425,8 @@ export class DatoCms implements INodeType {
 							// Extract the value from resource locator
 							const filterByCollection = filterByCollectionParam?.value !== undefined ? filterByCollectionParam.value : (typeof filterByCollectionParam === 'object' && filterByCollectionParam !== null ? filterByCollectionParam.value : filterByCollectionParam);
 							
-							// Since DatoCMS API doesn't support server-side collection filtering,
-							// we'll do client-side filtering after fetching the uploads
+							// Collect results in an array
+							const uploadResults: any[] = [];
 							
 							if (returnAllUploads) {
 								// Use paginated iterator to get all uploads
@@ -1207,12 +1435,7 @@ export class DatoCms implements INodeType {
 									// Apply client-side collection filter
 									if (!filterByCollection || 
 										(upload.upload_collection && upload.upload_collection.id === filterByCollection)) {
-										returnData.push({
-											json: upload as any,
-											pairedItem: {
-												item: i,
-											},
-										});
+										uploadResults.push(upload);
 									}
 								}
 							} else {
@@ -1227,16 +1450,22 @@ export class DatoCms implements INodeType {
 									// Apply client-side collection filter
 									if (!filterByCollection || 
 										(upload.upload_collection && upload.upload_collection.id === filterByCollection)) {
-										returnData.push({
-											json: upload as any,
-											pairedItem: {
-												item: i,
-											},
-										});
+										uploadResults.push(upload);
 									}
 								}
 							}
-							continue;
+							
+							// Always return an output item, even if no results found
+							responseData = {
+								results: uploadResults,
+								count: uploadResults.length,
+								query: {
+									filterByCollection: filterByCollection || null,
+									returnAll: returnAllUploads,
+									limit: returnAllUploads ? undefined : limitUploads
+								}
+							};
+							break;
 
 						case 'delete':
 							const deleteUploadId = this.getNodeParameter('uploadId', i) as string;
@@ -1252,16 +1481,16 @@ export class DatoCms implements INodeType {
 							const allItemTypes = await client.itemTypes.list();
 							const itemTypesToReturn = returnAllItemTypes ? allItemTypes : allItemTypes.slice(0, limitItemTypes);
 							
-							// Handle multiple items: each item type should be a separate n8n item
-							for (const itemType of itemTypesToReturn) {
-								returnData.push({
-									json: itemType as any,
-									pairedItem: {
-										item: i,
-									},
-								});
-							}
-							continue;
+							// Always return an output item with results array
+							responseData = {
+								results: itemTypesToReturn,
+								count: itemTypesToReturn.length,
+								query: {
+									returnAll: returnAllItemTypes,
+									limit: returnAllItemTypes ? undefined : limitItemTypes
+								}
+							};
+							break;
 
 						case 'get':
 							const itemTypeId = this.getNodeParameter('itemTypeId', i) as string;
