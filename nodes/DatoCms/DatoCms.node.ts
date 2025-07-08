@@ -139,6 +139,12 @@ export class DatoCms implements INodeType {
 						action: 'Create an upload',
 					},
 					{
+						name: 'Bulk Create',
+						value: 'bulkCreate',
+						description: 'Upload multiple files from URLs',
+						action: 'Bulk create uploads',
+					},
+					{
 						name: 'Get',
 						value: 'get',
 						description: 'Get an upload',
@@ -446,6 +452,182 @@ export class DatoCms implements INodeType {
 				default: '',
 				required: true,
 				description: 'The ID of the upload',
+			},
+			// Bulk Upload fields
+			{
+				displayName: 'Source',
+				name: 'bulkSource',
+				type: 'options',
+				options: [
+					{
+						name: 'Input Data',
+						value: 'inputData',
+						description: 'Extract URLs from the input data',
+					},
+					{
+						name: 'URL List',
+						value: 'urlList',
+						description: 'Provide a list of URLs directly',
+					},
+				],
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+					},
+				},
+				default: 'inputData',
+				required: true,
+				description: 'How to provide the URLs for bulk upload',
+			},
+			{
+				displayName: 'URL List',
+				name: 'urlList',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+						bulkSource: ['urlList'],
+					},
+				},
+				default: '',
+				required: true,
+				placeholder: 'https://example.com/image1.jpg\nhttps://example.com/image2.jpg',
+				description: 'List of URLs to upload, one per line',
+				typeOptions: {
+					rows: 5,
+				},
+			},
+			{
+				displayName: 'Extract URLs From',
+				name: 'extractFrom',
+				type: 'options',
+				options: [
+					{
+						name: 'All Fields',
+						value: 'allFields',
+						description: 'Search for URLs in all fields of the input data',
+					},
+					{
+						name: 'Specific Fields',
+						value: 'specificFields',
+						description: 'Extract URLs only from specified fields',
+					},
+				],
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+						bulkSource: ['inputData'],
+					},
+				},
+				default: 'allFields',
+				description: 'Where to look for URLs in the input data',
+			},
+			{
+				displayName: 'Field Names',
+				name: 'fieldNames',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+						bulkSource: ['inputData'],
+						extractFrom: ['specificFields'],
+					},
+				},
+				default: '',
+				placeholder: 'imageUrl,thumbnailUrl,gallery',
+				description: 'Comma-separated list of field names to extract URLs from. Supports nested fields using dot notation (e.g., "product.image.url").',
+			},
+			{
+				displayName: 'Skip Creation If Already Exists',
+				name: 'bulkSkipCreationIfAlreadyExists',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+					},
+				},
+				default: true,
+				description: 'Whether to skip creating uploads for files that already exist in DatoCMS',
+			},
+			{
+				displayName: 'Upload Collection',
+				name: 'bulkUploadCollection',
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+					},
+				},
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						placeholder: 'Select a collection...',
+						typeOptions: {
+							searchListMethod: 'searchUploadCollections',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By ID',
+						name: 'id',
+						type: 'string',
+						placeholder: 'e.g., AbC123dEf456GhI789',
+					},
+				],
+				description: 'Optional: Upload collection to organize the uploads',
+			},
+			{
+				displayName: 'Include Original Data',
+				name: 'includeOriginalData',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+					},
+				},
+				default: true,
+				description: 'Whether to include the original input data in the output',
+			},
+			{
+				displayName: 'Replace URLs in Data',
+				name: 'replaceUrlsInData',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+						includeOriginalData: [true],
+					},
+				},
+				default: false,
+				description: 'Whether to replace URLs with DatoCMS asset references (format: {upload_id: "..."}) in the original data structure',
+			},
+			{
+				displayName: 'Concurrent Uploads',
+				name: 'concurrentUploads',
+				type: 'number',
+				displayOptions: {
+					show: {
+						resource: ['upload'],
+						operation: ['bulkCreate'],
+					},
+				},
+				default: 5,
+				typeOptions: {
+					minValue: 1,
+					maxValue: 20,
+				},
+				description: 'Maximum number of uploads to process simultaneously',
 			},
 			// Additional options for Get Many records
 			{
@@ -1470,6 +1652,211 @@ export class DatoCms implements INodeType {
 						case 'delete':
 							const deleteUploadId = this.getNodeParameter('uploadId', i) as string;
 							responseData = await client.uploads.destroy(deleteUploadId);
+							break;
+
+						case 'bulkCreate':
+							const bulkSource = this.getNodeParameter('bulkSource', i) as string;
+							const bulkSkipIfExists = this.getNodeParameter('bulkSkipCreationIfAlreadyExists', i) as boolean;
+							const includeOriginalData = this.getNodeParameter('includeOriginalData', i) as boolean;
+							const replaceUrlsInData = this.getNodeParameter('replaceUrlsInData', i) as boolean;
+							const concurrentUploads = this.getNodeParameter('concurrentUploads', i) as number;
+							const bulkUploadCollectionParam = this.getNodeParameter('bulkUploadCollection', i) as any;
+							const bulkUploadCollection = bulkUploadCollectionParam?.value !== undefined ? bulkUploadCollectionParam.value : (typeof bulkUploadCollectionParam === 'object' && bulkUploadCollectionParam !== null ? bulkUploadCollectionParam.value : bulkUploadCollectionParam);
+							
+							// Helper function to check if a string is a valid URL
+							const isValidUrl = (string: string): boolean => {
+								try {
+									const url = new URL(string);
+									return url.protocol === 'http:' || url.protocol === 'https:';
+								} catch (_) {
+									return false;
+								}
+							};
+							
+							// Helper function to recursively extract URLs from an object
+							const extractUrlsFromObject = (obj: any, specificFields?: string[]): string[] => {
+								const urls: string[] = [];
+								
+								const searchObject = (object: any, path: string = ''): void => {
+									if (object === null || object === undefined) return;
+									
+									if (typeof object === 'string') {
+										// If specific fields are defined, check if current path matches
+										if (specificFields && specificFields.length > 0) {
+											const currentPath = path.split('.').filter(p => p).pop() || '';
+											if (!specificFields.some(field => {
+												// Support both exact match and nested field match
+												return field === currentPath || path.endsWith(field) || path.includes(field);
+											})) {
+												return;
+											}
+										}
+										
+										if (isValidUrl(object)) {
+											urls.push(object);
+										}
+									} else if (Array.isArray(object)) {
+										object.forEach((item, index) => searchObject(item, `${path}[${index}]`));
+									} else if (typeof object === 'object') {
+										Object.keys(object).forEach(key => {
+											searchObject(object[key], path ? `${path}.${key}` : key);
+										});
+									}
+								};
+								
+								searchObject(obj);
+								return urls;
+							};
+							
+							// Collect URLs based on source
+							let allUrls: string[] = [];
+							
+							if (bulkSource === 'urlList') {
+								// Get URLs from the text field
+								const urlListText = this.getNodeParameter('urlList', i) as string;
+								allUrls = urlListText
+									.split('\n')
+									.map(url => url.trim())
+									.filter(url => url && isValidUrl(url));
+							} else {
+								// Extract URLs from input data
+								const extractFrom = this.getNodeParameter('extractFrom', i) as string;
+								const inputData = items[i].json;
+								
+								if (extractFrom === 'specificFields') {
+									const fieldNamesStr = this.getNodeParameter('fieldNames', i) as string;
+									const fieldNames = fieldNamesStr
+										.split(',')
+										.map(field => field.trim())
+										.filter(field => field);
+									
+									allUrls = extractUrlsFromObject(inputData, fieldNames);
+								} else {
+									allUrls = extractUrlsFromObject(inputData);
+								}
+							}
+							
+							// Remove duplicates
+							const uniqueUrls = [...new Set(allUrls)];
+							
+							if (uniqueUrls.length === 0) {
+								throw new NodeOperationError(this.getNode(), 'No valid URLs found to upload');
+							}
+							
+							// Upload URLs in batches with concurrency control
+							const bulkUploadResults: any[] = [];
+							const bulkUploadErrors: any[] = [];
+							const urlToUploadMap: { [url: string]: any } = {};
+							
+							// Helper function to upload a single URL
+							const uploadUrl = async (url: string): Promise<void> => {
+								try {
+									const uploadData = await client.uploads.createFromUrl({
+										url: url,
+										skipCreationIfAlreadyExists: bulkSkipIfExists,
+										...(bulkUploadCollection ? { 
+											upload_collection: {
+												type: 'upload_collection',
+												id: bulkUploadCollection
+											}
+										} : {})
+									});
+									
+									bulkUploadResults.push(uploadData);
+									urlToUploadMap[url] = uploadData;
+								} catch (error) {
+									bulkUploadErrors.push({
+										url: url,
+										error: error.message,
+									});
+									// Still add to map but with error info
+									urlToUploadMap[url] = {
+										error: error.message,
+										url: url
+									};
+								}
+							};
+							
+							// Process uploads with concurrency limit
+							for (let j = 0; j < uniqueUrls.length; j += concurrentUploads) {
+								const batch = uniqueUrls.slice(j, j + concurrentUploads);
+								const batchPromises = batch.map(url => uploadUrl(url));
+								await Promise.all(batchPromises);
+							}
+							
+							// Prepare response data
+							const bulkResponseData: any = {
+								uploads: bulkUploadResults,
+								mapping: urlToUploadMap,
+								errors: bulkUploadErrors,
+								stats: {
+									total: uniqueUrls.length,
+									uploaded: bulkUploadResults.length,
+									failed: bulkUploadErrors.length,
+									duplicates: allUrls.length - uniqueUrls.length,
+								}
+							};
+							
+							// Include original data if requested
+							if (includeOriginalData) {
+								// Deep clone the original data
+								const processedData = JSON.parse(JSON.stringify(items[i].json));
+								
+								// Replace URLs if requested
+								if (replaceUrlsInData) {
+									// Helper function to recursively replace URLs in an object
+									const replaceUrlsInObject = (obj: any, specificFields?: string[]): any => {
+										if (obj === null || obj === undefined) return obj;
+										
+										if (typeof obj === 'string') {
+											// Check if this is a URL we uploaded
+											if (urlToUploadMap[obj] && !urlToUploadMap[obj].error) {
+												// Return DatoCMS asset reference format instead of full upload object
+												return {
+													upload_id: urlToUploadMap[obj].id
+												};
+											}
+											return obj;
+										} else if (Array.isArray(obj)) {
+											return obj.map(item => replaceUrlsInObject(item, specificFields));
+										} else if (typeof obj === 'object') {
+											const newObj: any = {};
+											for (const [key, value] of Object.entries(obj)) {
+												// If specific fields are defined, check if we should process this field
+												if (specificFields && specificFields.length > 0) {
+													if (specificFields.includes(key)) {
+														newObj[key] = replaceUrlsInObject(value, specificFields);
+													} else {
+														newObj[key] = value;
+													}
+												} else {
+													newObj[key] = replaceUrlsInObject(value, specificFields);
+												}
+											}
+											return newObj;
+										}
+										
+										return obj;
+									};
+									
+									// Get field names if we're using specific fields
+									let fieldNames: string[] | undefined;
+									if (bulkSource === 'inputData' && this.getNodeParameter('extractFrom', i) === 'specificFields') {
+										const fieldNamesStr = this.getNodeParameter('fieldNames', i) as string;
+										fieldNames = fieldNamesStr
+											.split(',')
+											.map(field => field.trim())
+											.filter(field => field);
+									}
+									
+									// Replace URLs in the data
+									bulkResponseData.data = replaceUrlsInObject(processedData, fieldNames);
+								} else {
+									bulkResponseData.originalData = processedData;
+								}
+							}
+							
+							responseData = bulkResponseData;
 							break;
 					}
 				} else if (resource === 'itemType') {

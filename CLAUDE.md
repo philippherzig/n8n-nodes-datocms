@@ -73,6 +73,7 @@ n8n-nodes-datocms/
 
 #### Upload Resource
 - `create`: Upload files from binary data or remote URLs (images, documents, etc.) with optional collection assignment
+- `bulkCreate`: Upload multiple files from URLs with automatic deduplication and DatoCMS asset reference replacement
 - `get`: Retrieve upload information by ID
 - `getAll`: List all uploads with optional collection filtering
 - `delete`: Remove uploaded files
@@ -241,6 +242,66 @@ This is perfect for sync processes where you have external/business IDs and want
 4. Filter by Collection: [Optional: Select specific collection]
 5. Returns only uploads from the selected collection
 
+#### Bulk Upload with Asset Reference Replacement
+The bulk upload operation provides advanced functionality for uploading multiple images and automatically replacing URLs in your data structure with DatoCMS asset references.
+
+**Key Features:**
+- **Multiple URL Sources**: Extract URLs from input data or provide a direct list
+- **Automatic Deduplication**: Removes duplicate URLs before uploading
+- **Parallel Processing**: Configurable concurrency (1-20 simultaneous uploads)
+- **Asset Reference Format**: Replaces URLs with `{upload_id: "..."}` objects ready for DatoCMS
+- **Error Handling**: Continues processing even if some uploads fail
+- **Comprehensive Output**: Detailed statistics and mapping information
+
+**Use Cases:**
+1. **Data Migration**: Import records with image URLs and automatically upload/link images
+2. **Bulk Content Processing**: Process large datasets with embedded image URLs
+3. **Workflow Automation**: Streamline image upload and record creation workflows
+
+**Example Input:**
+```json
+{
+  "title": "Product Name",
+  "image": "https://example.com/product1.jpg",
+  "gallery": [
+    "https://example.com/gallery1.jpg",
+    "https://example.com/gallery2.jpg"
+  ]
+}
+```
+
+**Example Output (with URL replacement enabled):**
+```json
+{
+  "data": {
+    "title": "Product Name", 
+    "image": { "upload_id": "123456" },
+    "gallery": [
+      { "upload_id": "123457" },
+      { "upload_id": "123458" }
+    ]
+  },
+  "uploads": [...], // All upload objects
+  "mapping": {...}, // URL to upload mapping
+  "stats": {
+    "total": 3,
+    "uploaded": 3,
+    "failed": 0,
+    "duplicates": 0
+  }
+}
+```
+
+**Configuration Options:**
+1. **Source**: Choose between extracting URLs from input data or providing a direct URL list
+2. **Field Selection**: Extract URLs from all fields or specify particular fields
+3. **URL Replacement**: Replace URLs with DatoCMS asset references in the data structure
+4. **Collection Assignment**: Organize uploads into DatoCMS collections
+5. **Concurrency Control**: Adjust parallel upload limit based on your needs
+
+**Perfect for Data Sync Workflows:**
+The resulting data with asset references can be directly used in DatoCMS record create/update operations, eliminating the need for separate URL-to-upload mapping steps.
+
 #### Upload Input Field Mapping
 The upload create operation includes an **"Include Other Input Fields"** option that allows you to preserve input data alongside the DatoCMS upload response. This is particularly useful for mapping workflows where you need to correlate input data (like source URLs) with the resulting DatoCMS upload IDs.
 
@@ -356,6 +417,18 @@ Set these in your DatoCMS project:
 - **Metadata Preservation**: Original input fields (categories, alt text, etc.) are maintained in the output
 - **Complex Workflow Support**: Multi-step processes can reference both input and output data
 - **n8n Set Node Pattern**: Follows the same UX pattern as n8n's standard Set node for consistency
+
+### Bulk Upload Implementation ✅
+- **Bulk Create Operation**: New operation for uploading multiple files from URLs in a single action
+- **Flexible URL Sources**: Extract URLs from input data structures or provide direct URL lists
+- **Smart URL Detection**: Recursive URL extraction from nested objects and arrays with optional field filtering
+- **Automatic Deduplication**: Removes duplicate URLs before processing to avoid redundant uploads
+- **Parallel Processing**: Configurable concurrency control (1-20 simultaneous uploads) for optimal performance
+- **DatoCMS Asset References**: Automatically replaces URLs with proper `{upload_id: "..."}` format for direct use in record operations
+- **Comprehensive Error Handling**: Continues processing when individual uploads fail, providing detailed error reporting
+- **Rich Output Format**: Returns uploads array, URL-to-upload mapping, error details, and processing statistics
+- **Data Structure Preservation**: Option to replace URLs in original data structure while maintaining all other fields
+- **Collection Support**: Optional assignment of uploads to DatoCMS collections for organization
 
 ## Future Enhancements
 
