@@ -1724,13 +1724,40 @@ export class DatoCms implements INodeType {
 								const inputData = items[i].json;
 								
 								if (extractFrom === 'specificFields') {
-									const fieldNamesStr = this.getNodeParameter('fieldNames', i) as string;
-									const fieldNames = fieldNamesStr
-										.split(',')
-										.map(field => field.trim())
-										.filter(field => field);
+									const fieldNamesParam = this.getNodeParameter('fieldNames', i);
+									let fieldNames: string[] = [];
+									let isDirectObjectExtraction = false;
 									
-									allUrls = extractUrlsFromObject(inputData, fieldNames);
+									// Handle both string input and expression results
+									if (typeof fieldNamesParam === 'string') {
+										// String input like "image,gallery"
+										fieldNames = fieldNamesParam
+											.split(',')
+											.map(field => field.trim())
+											.filter(field => field);
+									} else if (Array.isArray(fieldNamesParam)) {
+										// Array input from expression
+										fieldNames = fieldNamesParam.map(f => String(f)).filter(f => f);
+									} else if (fieldNamesParam && typeof fieldNamesParam === 'object') {
+										// Object input from expression - extract URLs directly from this object
+										allUrls = extractUrlsFromObject(fieldNamesParam);
+										isDirectObjectExtraction = true;
+									} else {
+										// Fallback: convert to string and split
+										fieldNames = String(fieldNamesParam || '')
+											.split(',')
+											.map(field => field.trim())
+											.filter(field => field);
+									}
+									
+									// Only extract from input data if we have field names and it's not direct object extraction
+									if (fieldNames.length > 0 && !isDirectObjectExtraction) {
+										allUrls = extractUrlsFromObject(inputData, fieldNames);
+									}
+									
+									// Store the extraction mode for later use in replacement
+									(this as any).isDirectObjectExtraction = isDirectObjectExtraction;
+									(this as any).fieldNamesParam = fieldNamesParam;
 								} else {
 									allUrls = extractUrlsFromObject(inputData);
 								}
@@ -1839,18 +1866,38 @@ export class DatoCms implements INodeType {
 										return obj;
 									};
 									
-									// Get field names if we're using specific fields
-									let fieldNames: string[] | undefined;
-									if (bulkSource === 'inputData' && this.getNodeParameter('extractFrom', i) === 'specificFields') {
-										const fieldNamesStr = this.getNodeParameter('fieldNames', i) as string;
-										fieldNames = fieldNamesStr
-											.split(',')
-											.map(field => field.trim())
-											.filter(field => field);
-									}
+									// Check if we used direct object extraction
+									const isDirectExtraction = (this as any).isDirectObjectExtraction;
+									const extractedObject = (this as any).fieldNamesParam;
 									
-									// Replace URLs in the data
-									bulkResponseData.data = replaceUrlsInObject(processedData, fieldNames);
+									if (isDirectExtraction && extractedObject) {
+										// We extracted URLs from a specific object (like {{ $json.images }})
+										// Replace URLs in the entire data structure
+										bulkResponseData.data = replaceUrlsInObject(processedData);
+									} else {
+										// Get field names if we're using specific fields  
+										let fieldNames: string[] | undefined;
+										if (bulkSource === 'inputData' && this.getNodeParameter('extractFrom', i) === 'specificFields') {
+											const fieldNamesParam = this.getNodeParameter('fieldNames', i);
+											
+											if (typeof fieldNamesParam === 'string') {
+												fieldNames = fieldNamesParam
+													.split(',')
+													.map(field => field.trim())
+													.filter(field => field);
+											} else if (Array.isArray(fieldNamesParam)) {
+												fieldNames = fieldNamesParam.map(f => String(f)).filter(f => f);
+											} else {
+												fieldNames = String(fieldNamesParam || '')
+													.split(',')
+													.map(field => field.trim())
+													.filter(field => field);
+											}
+										}
+										
+										// Replace URLs in the data
+										bulkResponseData.data = replaceUrlsInObject(processedData, fieldNames);
+									}
 								} else {
 									bulkResponseData.originalData = processedData;
 								}
