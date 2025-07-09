@@ -1,48 +1,144 @@
-![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
+# n8n-nodes-datocms
 
-# n8n-nodes-starter
+This is an n8n community node that provides a simplified interface for DatoCMS operations. It lets you automate content management tasks in DatoCMS using n8n workflows.
 
-This repo contains example nodes to help you get started building your own custom integrations for [n8n](https://n8n.io). It includes the node linter and other dependencies.
+[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
-To make your custom node available to the community, you must create it as an npm package, and [submit it to the npm registry](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry).
+[DatoCMS](https://www.datocms.com/) is a headless CMS for modern web and mobile applications.
 
-If you would like your node to be available on n8n cloud you can also [submit your node for verification](https://docs.n8n.io/integrations/creating-nodes/deploy/submit-community-nodes/).
+## Installation
 
-## Prerequisites
+Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
-You need the following installed on your development machine:
+### npm
 
-* [git](https://git-scm.com/downloads)
-* Node.js and npm. Minimum version Node 20. You can find instructions on how to install both using nvm (Node Version Manager) for Linux, Mac, and WSL [here](https://github.com/nvm-sh/nvm). For Windows users, refer to Microsoft's guide to [Install NodeJS on Windows](https://docs.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-windows).
-* Install n8n with:
-  ```
-  npm install n8n -g
-  ```
-* Recommended: follow n8n's guide to [set up your development environment](https://docs.n8n.io/integrations/creating-nodes/build/node-development-environment/).
+```bash
+npm install n8n-nodes-datocms
+```
 
-## Using this starter
+### n8n Community Nodes GUI
 
-These are the basic steps for working with the starter. For detailed guidance on creating and publishing nodes, refer to the [documentation](https://docs.n8n.io/integrations/creating-nodes/).
+1. Go to **Settings** > **Community Nodes**
+2. Select **Install**
+3. Enter `n8n-nodes-datocms` in **Enter npm package name**
+4. Select **Install**
 
-1. [Generate a new repository](https://github.com/n8n-io/n8n-nodes-starter/generate) from this template repository.
-2. Clone your new repo:
-   ```
-   git clone https://github.com/<your organization>/<your-repo-name>.git
-   ```
-3. Run `npm i` to install dependencies.
-4. Open the project in your editor.
-5. Browse the examples in `/nodes` and `/credentials`. Modify the examples, or replace them with your own nodes.
-6. Update the `package.json` to match your details.
-7. Run `npm run lint` to check for errors or `npm run lintfix` to automatically fix errors when possible.
-8. Test your node locally. Refer to [Run your node locally](https://docs.n8n.io/integrations/creating-nodes/test/run-node-locally/) for guidance.
-9. Replace this README with documentation for your node. Use the [README_TEMPLATE](README_TEMPLATE.md) to get started.
-10. Update the LICENSE file to use your details.
-11. [Publish](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry) your package to npm.
+## Operations
 
-## More information
+### Records
 
-Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
+- **Create** - Create a new content record
+- **Create or Update** - Create or update a record based on matching fields (upsert)
+- **Delete** - Delete a record
+- **Get** - Retrieve a single record
+- **Get Many** - List records with advanced filtering
+- **Update** - Update an existing record
+- **Publish** - Publish a draft record
+- **Unpublish** - Unpublish a live record
+
+### Uploads
+
+- **Create** - Upload a file from binary data or URL
+- **Bulk Create** - Upload multiple files from URLs with automatic asset reference replacement
+- **Delete** - Delete an uploaded file
+- **Get** - Get upload information
+- **Get Many** - List uploads with optional collection filtering
+
+### Item Types
+
+- **Get** - Get details of a specific content model
+- **Get Many** - List all available content models
+
+## Features
+
+### Dynamic Field Loading
+- Content types and fields are automatically loaded from your DatoCMS project
+- No need to manually enter IDs or field names
+
+### ResourceMapper Integration
+- Visual field mapping interface for easy configuration
+- Support for required, unique, and localized fields
+- Automatic field validation based on DatoCMS schema
+
+### Advanced Filtering
+- Filter records by any field value
+- Support for multiple operators (equals, greater than, in, exists, etc.)
+- Works with both system fields and custom fields
+
+### Bulk Operations
+- Upload multiple files at once from URLs
+- Automatic URL extraction from data structures
+- Replace URLs with DatoCMS asset references for seamless integration
+
+### Error Handling
+- Comprehensive error messages
+- Continue on fail support for batch operations
+- Detailed operation statistics for bulk uploads
+
+## Credentials
+
+To use this node, you need to create DatoCMS API credentials:
+
+1. Log in to your DatoCMS project
+2. Go to **Settings** > **API Tokens**
+3. Create a new API token with appropriate permissions
+4. In n8n, create new DatoCMS credentials using this token
+
+### Credential Fields
+
+- **API Token** - Your DatoCMS management API token
+- **Environment** - The environment to use (default: main)
+- **Base URL** - The DatoCMS API endpoint (default: https://site-api.datocms.com)
+
+## Usage Examples
+
+### Creating a Record
+
+1. Select **Resource**: Record
+2. Select **Operation**: Create
+3. Choose your **Item Type** from the dropdown
+4. Map fields using the visual ResourceMapper
+5. Enable **Auto Publish** if needed
+
+### Filtering Records
+
+1. Select **Resource**: Record
+2. Select **Operation**: Get Many
+3. Choose your **Item Type**
+4. Add filters to search for specific records:
+   - Select field (e.g., "status", "created_at")
+   - Choose operator (e.g., "equals", "greater than")
+   - Enter value
+
+### Bulk Upload Images
+
+1. Select **Resource**: Upload
+2. Select **Operation**: Bulk Create
+3. Configure source (input data or URL list)
+4. Enable **Replace URLs in Data** to get asset references
+5. The output will include DatoCMS asset references ready for record creation
+
+### Upsert Records (Sync External Data)
+
+1. Select **Resource**: Record
+2. Select **Operation**: Create or Update
+3. Choose your **Item Type**
+4. In ResourceMapper, select matching fields (e.g., external_id, SKU)
+5. Map all other fields
+6. Enable **Create If Not Found** to create new records when no match exists
+
+## Compatibility
+
+- Requires n8n version 0.193.0 or later
+- Works with DatoCMS Content Management API v3
+- Supports all DatoCMS field types including localized content
+
+## Resources
+
+* [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
+* [DatoCMS API documentation](https://www.datocms.com/docs/content-management-api)
+* [GitHub repository](https://github.com/pherzig/n8n-nodes-datocms)
 
 ## License
 
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+[MIT](https://github.com/pherzig/n8n-nodes-datocms/blob/master/LICENSE.md)

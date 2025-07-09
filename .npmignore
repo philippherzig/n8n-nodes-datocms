@@ -1,2 +1,39 @@
+# Source files
+nodes/**/*.ts
+credentials/**/*.ts
+
+# Configuration files  
+.eslintrc.js
+.prettierrc
+tsconfig.json
+gulpfile.js
+
+# Documentation
+*.md
+!README.md
+!LICENSE.md
+
+# Development files
+.vscode/
+.idea/
+*.log
 .DS_Store
 *.tsbuildinfo
+
+# Git files
+.git/
+.gitignore
+
+# Build files not needed
+node_modules/
+*.map
+
+# Test files
+**/*.spec.ts
+**/*.test.ts
+__tests__/
+
+# Other
+CLAUDE.md
+docs/
+examples/

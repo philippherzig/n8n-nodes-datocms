@@ -101,12 +101,6 @@ export class DatoCms implements INodeType {
 						action: 'Get many records',
 					},
 					{
-						name: 'Update',
-						value: 'update',
-						description: 'Update a record',
-						action: 'Update a record',
-					},
-					{
 						name: 'Publish',
 						value: 'publish',
 						description: 'Publish a record',
@@ -117,6 +111,12 @@ export class DatoCms implements INodeType {
 						value: 'unpublish',
 						description: 'Unpublish a record',
 						action: 'Unpublish a record',
+					},
+					{
+						name: 'Update',
+						value: 'update',
+						description: 'Update a record',
+						action: 'Update a record',
 					},
 				],
 				default: 'create',
@@ -133,16 +133,22 @@ export class DatoCms implements INodeType {
 				},
 				options: [
 					{
+						name: 'Bulk Create',
+						value: 'bulkCreate',
+						description: 'Upload multiple files from URLs',
+						action: 'Bulk create uploads',
+					},
+					{
 						name: 'Create',
 						value: 'create',
 						description: 'Upload a file',
 						action: 'Create an upload',
 					},
 					{
-						name: 'Bulk Create',
-						value: 'bulkCreate',
-						description: 'Upload multiple files from URLs',
-						action: 'Bulk create uploads',
+						name: 'Delete',
+						value: 'delete',
+						description: 'Delete an upload',
+						action: 'Delete an upload',
 					},
 					{
 						name: 'Get',
@@ -155,12 +161,6 @@ export class DatoCms implements INodeType {
 						value: 'getAll',
 						description: 'Get many uploads',
 						action: 'Get many uploads',
-					},
-					{
-						name: 'Delete',
-						value: 'delete',
-						description: 'Delete an upload',
-						action: 'Delete an upload',
 					},
 				],
 				default: 'create',
@@ -539,7 +539,7 @@ export class DatoCms implements INodeType {
 				},
 				default: '',
 				placeholder: 'imageUrl,thumbnailUrl,gallery',
-				description: 'Comma-separated list of field names to extract URLs from. Supports nested fields using dot notation (e.g., "product.image.url").',
+				description: 'Comma-separated list of field names to extract URLs from. Supports nested fields using dot notation (e.g., "product.image.URL").',
 			},
 			{
 				displayName: 'Skip Creation If Already Exists',
@@ -652,7 +652,7 @@ export class DatoCms implements INodeType {
 						displayName: 'Filter',
 						values: [
 							{
-								displayName: 'Field',
+								displayName: 'Field Name or ID',
 								name: 'field',
 								type: 'options',
 								typeOptions: {
@@ -660,7 +660,7 @@ export class DatoCms implements INodeType {
 								},
 								default: '',
 								required: true,
-								description: 'The field to filter by',
+								description: 'The field to filter by. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Operator',
@@ -673,9 +673,9 @@ export class DatoCms implements INodeType {
 										description: 'Field equals value',
 									},
 									{
-										name: 'Not Equals',
-										value: 'neq',
-										description: 'Field does not equal value',
+										name: 'Exists',
+										value: 'exists',
+										description: 'Field has a value (not null)',
 									},
 									{
 										name: 'Greater Than',
@@ -688,6 +688,11 @@ export class DatoCms implements INodeType {
 										description: 'Field is greater than or equal to value',
 									},
 									{
+										name: 'In',
+										value: 'in',
+										description: 'Field matches any of the comma-separated values',
+									},
+									{
 										name: 'Less Than',
 										value: 'lt',
 										description: 'Field is less than value',
@@ -698,19 +703,14 @@ export class DatoCms implements INodeType {
 										description: 'Field is less than or equal to value',
 									},
 									{
-										name: 'In',
-										value: 'in',
-										description: 'Field matches any of the comma-separated values',
+										name: 'Not Equals',
+										value: 'neq',
+										description: 'Field does not equal value',
 									},
 									{
 										name: 'Not In',
 										value: 'notIn',
 										description: 'Field does not match any of the comma-separated values',
-									},
-									{
-										name: 'Exists',
-										value: 'exists',
-										description: 'Field has a value (not null)',
 									},
 								],
 								default: 'eq',
