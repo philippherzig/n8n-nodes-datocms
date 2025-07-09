@@ -1844,15 +1844,20 @@ export class DatoCms implements INodeType {
 										
 										if (typeof obj === 'string') {
 											// Check if this is a URL we uploaded
-											if (urlToUploadMap[obj] && !urlToUploadMap[obj].error) {
-												// Return DatoCMS asset reference format instead of full upload object
-												return {
-													upload_id: urlToUploadMap[obj].id
-												};
+											if (urlToUploadMap[obj]) {
+												if (!urlToUploadMap[obj].error) {
+													// Return DatoCMS asset reference format instead of full upload object
+													return {
+														upload_id: urlToUploadMap[obj].id
+													};
+												} else {
+													// Failed upload: remove the URL to prevent upsert errors
+													return null;
+												}
 											}
 											return obj;
 										} else if (Array.isArray(obj)) {
-											return obj.map(item => replaceUrlsInObject(item, specificFields));
+											return obj.map(item => replaceUrlsInObject(item, specificFields)).filter(item => item !== null);
 										} else if (typeof obj === 'object') {
 											const newObj: any = {};
 											for (const [key, value] of Object.entries(obj)) {

@@ -250,7 +250,7 @@ The bulk upload operation provides advanced functionality for uploading multiple
 - **Automatic Deduplication**: Removes duplicate URLs before uploading
 - **Parallel Processing**: Configurable concurrency (1-20 simultaneous uploads)
 - **Asset Reference Format**: Replaces URLs with `{upload_id: "..."}` objects ready for DatoCMS
-- **Error Handling**: Continues processing even if some uploads fail
+- **Smart Error Handling**: Continues processing even if some uploads fail and automatically removes failed URLs from data to prevent upsert errors
 - **Comprehensive Output**: Detailed statistics and mapping information
 
 **Use Cases:**
@@ -281,16 +281,23 @@ The bulk upload operation provides advanced functionality for uploading multiple
       { "upload_id": "123458" }
     ]
   },
-  "uploads": [...], // All upload objects
+  "uploads": [...], // All successful upload objects
   "mapping": {...}, // URL to upload mapping
+  "errors": [...], // Failed uploads with error details
   "stats": {
-    "total": 3,
+    "total": 4,
     "uploaded": 3,
-    "failed": 0,
+    "failed": 1,
     "duplicates": 0
   }
 }
 ```
+
+**Smart Error Handling:**
+- Failed uploads (e.g., 404 URLs, network errors) are automatically removed from the data structure
+- This prevents upsert errors when the data is used in subsequent DatoCMS operations
+- Failed URLs are documented in the `errors` array and `stats` for debugging
+- The process continues even if some uploads fail, ensuring maximum data recovery
 
 **Configuration Options:**
 1. **Source**: Choose between extracting URLs from input data or providing a direct URL list
@@ -425,7 +432,7 @@ Set these in your DatoCMS project:
 - **Automatic Deduplication**: Removes duplicate URLs before processing to avoid redundant uploads
 - **Parallel Processing**: Configurable concurrency control (1-20 simultaneous uploads) for optimal performance
 - **DatoCMS Asset References**: Automatically replaces URLs with proper `{upload_id: "..."}` format for direct use in record operations
-- **Comprehensive Error Handling**: Continues processing when individual uploads fail, providing detailed error reporting
+- **Smart Error Handling**: Continues processing when individual uploads fail, automatically removes failed URLs from data to prevent upsert errors
 - **Rich Output Format**: Returns uploads array, URL-to-upload mapping, error details, and processing statistics
 - **Data Structure Preservation**: Option to replace URLs in original data structure while maintaining all other fields
 - **Collection Support**: Optional assignment of uploads to DatoCMS collections for organization
