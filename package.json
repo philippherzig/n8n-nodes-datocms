@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-datocms",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "n8n node for DatoCMS integration with simplified operations and dynamic field loading",
   "keywords": [
     "n8n-community-node-package",
@@ -9,14 +9,14 @@
     "headless-cms"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/pherzig/n8n-nodes-datocms",
+  "homepage": "https://github.com/philippherzig/n8n-nodes-datocms",
   "author": {
-    "name": "Patrick Herzig",
-    "email": "patrick@herzig.ch"
+    "name": "Philipp Herzig",
+    "email": "philipp.herzig@me.com"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pherzig/n8n-nodes-datocms.git"
+    "url": "git+https://github.com/philippherzig/n8n-nodes-datocms.git"
   },
   "engines": {
     "node": ">=20.15"

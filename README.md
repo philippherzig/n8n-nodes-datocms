@@ -137,8 +137,8 @@ To use this node, you need to create DatoCMS API credentials:
 
 * [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
 * [DatoCMS API documentation](https://www.datocms.com/docs/content-management-api)
-* [GitHub repository](https://github.com/pherzig/n8n-nodes-datocms)
+* [GitHub repository](https://github.com/philippherzig/n8n-nodes-datocms)
 
 ## License
 
-[MIT](https://github.com/pherzig/n8n-nodes-datocms/blob/master/LICENSE.md)
+[MIT](https://github.com/philippherzig/n8n-nodes-datocms/blob/master/LICENSE.md)
