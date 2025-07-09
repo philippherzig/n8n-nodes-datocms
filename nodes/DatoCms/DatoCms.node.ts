@@ -15,7 +15,7 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { buildClient } from '@datocms/cma-client-node';
+import { buildClient, LogLevel } from '@datocms/cma-client-node';
 
 export class DatoCms implements INodeType {
 	description: INodeTypeDescription = {
@@ -843,6 +843,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -868,6 +869,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -931,6 +933,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -1015,6 +1018,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -1056,6 +1060,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -1090,6 +1095,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				try {
@@ -1216,6 +1222,7 @@ export class DatoCms implements INodeType {
 				const client = buildClient({
 					apiToken: credentials.apiToken as string,
 					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
 				});
 
 				const resource = this.getNodeParameter('resource', i) as string;
