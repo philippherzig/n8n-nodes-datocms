@@ -84,7 +84,7 @@ export class DatoCms implements INodeType {
 						name: 'Create or Update',
 						value: 'upsert',
 						description: 'Create a new record, or update the current one if it already exists (upsert)',
-						action: 'Record upsert',
+						action: 'Create or update a record',
 					},
 					{
 						name: 'Delete',
