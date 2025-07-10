@@ -15,7 +15,7 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { buildClient, LogLevel } from '@datocms/cma-client-node';
+import { buildClient, LogLevel, buildBlockRecord } from '@datocms/cma-client-node';
 
 export class DatoCms implements INodeType {
 	description: INodeTypeDescription = {
@@ -55,6 +55,10 @@ export class DatoCms implements INodeType {
 					{
 						name: 'Item Type',
 						value: 'itemType',
+					},
+					{
+						name: 'Block',
+						value: 'block',
 					},
 				],
 				default: 'record',
@@ -191,6 +195,26 @@ export class DatoCms implements INodeType {
 				],
 				default: 'getAll',
 			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['block'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'create',
+						description: 'Create a new block',
+						action: 'Create a block',
+					},
+				],
+				default: 'create',
+			},
 			// Item Type selection for record operations
 			{
 				displayName: 'Item Type',
@@ -223,6 +247,39 @@ export class DatoCms implements INodeType {
 					},
 				],
 				description: 'The item type to work with',
+			},
+			// Block Type selection for block operations
+			{
+				displayName: 'Block Type',
+				name: 'blockType',
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['block'],
+						operation: ['create'],
+					},
+				},
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						placeholder: 'Select a block type...',
+						typeOptions: {
+							searchListMethod: 'searchBlockTypes',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By ID',
+						name: 'id',
+						type: 'string',
+						placeholder: 'e.g., JTmoQFnWTnKr8Dr96Fem3w',
+					},
+				],
+				description: 'The block type to create',
 			},
 			// Record ID field
 			{
@@ -265,6 +322,33 @@ export class DatoCms implements INodeType {
 					},
 				},
 				description: 'Fields to set for the new record',
+			},
+			// Fields for block creation
+			{
+				displayName: 'Fields',
+				name: 'fields',
+				type: 'resourceMapper',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['block'],
+						operation: ['create'],
+					},
+				},
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				typeOptions: {
+					resourceMapper: {
+						resourceMapperMethod: 'getBlockFields',
+						mode: 'add',
+						valuesLabel: 'Fields',
+						addAllFields: true,
+						multiKeyMatch: false,
+					},
+				},
+				description: 'Fields to set for the new block',
 			},
 			// Fields for record update
 			{
@@ -864,6 +948,35 @@ export class DatoCms implements INodeType {
 				}
 			},
 
+			async searchBlockTypes(this: ILoadOptionsFunctions, filter?: string): Promise<INodeListSearchResult> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
+				});
+
+				try {
+					const itemTypes = await client.itemTypes.list();
+					
+					// Filter for block types only (item types that can be used as blocks)
+					const blockTypes = itemTypes.filter((itemType) => itemType.modular_block === true);
+					
+					const results = blockTypes
+						.filter((blockType) => !filter || blockType.name.toLowerCase().includes(filter.toLowerCase()))
+						.map((blockType) => ({
+							name: blockType.name,
+							value: blockType.id,
+						}));
+
+					return {
+						results,
+					};
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Failed to load block types: ${error.message}`);
+				}
+			},
+
 			async searchUploadCollections(this: ILoadOptionsFunctions, filter?: string): Promise<INodeListSearchResult> {
 				const credentials = await this.getCredentials('datoCmsApi');
 				const client = buildClient({
@@ -1209,12 +1322,156 @@ export class DatoCms implements INodeType {
 					throw new NodeOperationError(this.getNode(), `Failed to load model fields: ${error.message}`);
 				}
 			},
+
+			async getBlockFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
+				const credentials = await this.getCredentials('datoCmsApi');
+				const blockTypeParam = this.getNodeParameter('blockType') as any;
+				
+				// Extract the value from resource locator
+				let blockType = blockTypeParam?.value || blockTypeParam;
+				
+				// Handle resource locator structure
+				if (typeof blockTypeParam === 'object' && blockTypeParam !== null) {
+					blockType = blockTypeParam.value;
+				}
+				
+				if (!blockType || blockType === '') {
+					throw new NodeOperationError(this.getNode(), 'Please select a Block Type first');
+				}
+
+				const client = buildClient({
+					apiToken: credentials.apiToken as string,
+					environment: credentials.environment as string,
+					logLevel: LogLevel.BODY,
+				});
+
+				try {
+					// Get all fields for this block type
+					const fields = await client.fields.list(blockType);
+					
+					// Sort fields by position to match DatoCMS schema order
+					fields.sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+					
+					const mappedFields: ResourceMapperFields = {
+						fields: []
+					};
+					
+
+					// Map DatoCMS field types to n8n field types
+					const fieldTypeMapping: { [key: string]: FieldType } = {
+						'string': 'string',
+						'text': 'string',
+						'slug': 'string',
+						'color': 'string',
+						'integer': 'number',
+						'float': 'number',
+						'boolean': 'boolean',
+						'date': 'dateTime',
+						'date_time': 'dateTime',
+						'json': 'string',
+						'lat_lon': 'string',
+						'seo': 'string',
+						'structured_text': 'string',
+						'link': 'string',
+						'links': 'array',
+						'file': 'string',
+						'gallery': 'array',
+						'single_block': 'string',
+						'modular_content': 'array',
+					};
+					
+
+					for (const field of fields) {
+						// Skip system fields and non-editable fields
+						if (field.api_key === 'id' || field.api_key === 'created_at' || field.api_key === 'updated_at') {
+							continue;
+						}
+
+						let fieldType = fieldTypeMapping[field.field_type] || 'string';
+						const isLocalized = field.localized === true;
+						const isRequired = !!(field.validators as any)?.required;
+						const isUnique = !!(field.validators as any)?.unique;
+						
+						// Apply enhanced field types based on DatoCMS validators
+						const validators = field.validators as any;
+						if (validators?.format?.predefined_pattern === 'url') {
+							fieldType = 'url';
+						} else if (validators?.format?.predefined_pattern === 'email') {
+							fieldType = 'string'; // n8n doesn't have email type in ResourceMapper
+						}
+						
+						// For enum fields, we could set options but ResourceMapper doesn't support it well
+						let fieldOptions: any = undefined;
+						if (validators?.enum?.values && Array.isArray(validators.enum.values)) {
+							// Note: ResourceMapper options support is limited, but we can try
+							fieldOptions = validators.enum.values.map((value: any) => ({
+								name: value,
+								value: value
+							}));
+						}
+						
+						// Build display name with markers for unique and localized fields
+						let displayName = field.label;
+						if (isUnique) {
+							displayName = `${displayName} (Unique)`;
+						}
+						if (isLocalized) {
+							displayName = `${displayName} (Localized)`;
+						}
+						
+						const fieldDef: any = {
+							id: field.api_key,
+							displayName: displayName,
+							type: isLocalized ? 'string' : fieldType, // Use string type for localized fields to allow JSON input
+							required: isRequired,
+							defaultMatch: false, // Blocks typically don't use matching
+							canBeUsedToMatch: false, // Blocks typically don't use matching
+							display: true,
+							removed: false,
+						};
+						
+						// Add options for enum fields if available
+						if (fieldOptions) {
+							fieldDef.options = fieldOptions;
+						}
+						
+						mappedFields.fields.push(fieldDef);
+					}
+
+					return mappedFields;
+				} catch (error) {
+					throw new NodeOperationError(this.getNode(), `Failed to load block fields: ${error.message}`);
+				}
+			},
 		},
 	};
+
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
+
+		// Helper function to get field information for proper parsing
+		const getFieldInfos = async (client: any, itemTypeId: string): Promise<{ [key: string]: any }> => {
+			try {
+				const fields = await client.fields.list(itemTypeId);
+				const fieldInfos: { [key: string]: any } = {};
+				
+				for (const field of fields) {
+					fieldInfos[field.api_key] = {
+						field_type: field.field_type,
+						localized: field.localized,
+						validators: field.validators,
+						appearance: field.appearance
+					};
+				}
+				
+				return fieldInfos;
+			} catch (error) {
+				// Return empty object if field info cannot be retrieved
+				return {};
+			}
+		};
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -1250,7 +1507,10 @@ export class DatoCms implements INodeType {
 								// Convert resourceMapper format to DatoCMS format
 								fieldData = { ...createFields.value };
 								
-								// Parse any JSON strings that might be localized fields
+								// Get field information for proper parsing
+								const fieldInfos = await getFieldInfos(client, itemType!);
+								
+								// Parse JSON strings for special field types
 								for (const [key, value] of Object.entries(fieldData)) {
 									// Skip helper fields
 									if (key.startsWith('_') && key.includes('helper')) {
@@ -1258,9 +1518,42 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim().startsWith('{')) {
+									if (typeof value === 'string' && value.trim()) {
+										const fieldInfo = fieldInfos[key];
+										const trimmedValue = value.trim();
+										
 										try {
-											fieldData[key] = JSON.parse(value);
+											// Parse localized fields (objects)
+											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
+												fieldData[key] = JSON.parse(trimmedValue);
+											}
+											// Parse JSON fields with checkbox group editor (they expect stringified JSON)
+											else if (fieldInfo?.field_type === 'json' && 
+													fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+												if (trimmedValue.startsWith('[')) {
+													// Parse array and stringify it for DatoCMS JSON field
+													const parsedArray = JSON.parse(trimmedValue);
+													fieldData[key] = JSON.stringify(parsedArray);
+												} else {
+													// Single value - convert to array and stringify
+													fieldData[key] = JSON.stringify([trimmedValue]);
+												}
+											}
+											// Parse modular content and other array fields
+											else if (fieldInfo?.field_type === 'modular_content' || 
+													fieldInfo?.field_type === 'links' || 
+													fieldInfo?.field_type === 'gallery') {
+												if (trimmedValue.startsWith('[')) {
+													fieldData[key] = JSON.parse(trimmedValue);
+												} else {
+													// Single value - convert to array
+													fieldData[key] = [trimmedValue];
+												}
+											}
+											// Parse other JSON objects/arrays
+											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
+												fieldData[key] = JSON.parse(trimmedValue);
+											}
 										} catch (e) {
 											// If it's not valid JSON, keep it as a string
 										}
@@ -1369,7 +1662,10 @@ export class DatoCms implements INodeType {
 								// Convert resourceMapper format to DatoCMS format
 								updateFieldData = { ...updateFields.value };
 								
-								// Parse any JSON strings that might be localized fields
+								// Get field information for proper parsing
+								const fieldInfos = await getFieldInfos(client, itemType!);
+								
+								// Parse JSON strings for special field types
 								for (const [key, value] of Object.entries(updateFieldData)) {
 									// Skip helper fields
 									if (key.startsWith('_') && key.includes('helper')) {
@@ -1377,9 +1673,30 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim().startsWith('{')) {
+									if (typeof value === 'string' && value.trim()) {
+										const fieldInfo = fieldInfos[key];
+										const trimmedValue = value.trim();
+										
 										try {
-											updateFieldData[key] = JSON.parse(value);
+											// Parse localized fields (objects)
+											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
+												updateFieldData[key] = JSON.parse(trimmedValue);
+											}
+											// Parse modular content and other array fields
+											else if (fieldInfo?.field_type === 'modular_content' || 
+													fieldInfo?.field_type === 'links' || 
+													fieldInfo?.field_type === 'gallery') {
+												if (trimmedValue.startsWith('[')) {
+													updateFieldData[key] = JSON.parse(trimmedValue);
+												} else {
+													// Single value - convert to array
+													updateFieldData[key] = [trimmedValue];
+												}
+											}
+											// Parse other JSON objects/arrays
+											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
+												updateFieldData[key] = JSON.parse(trimmedValue);
+											}
 										} catch (e) {
 											// If it's not valid JSON, keep it as a string
 										}
@@ -1421,7 +1738,10 @@ export class DatoCms implements INodeType {
 									}
 								}
 								
-								// Parse any JSON strings that might be localized fields
+								// Get field information for proper parsing
+								const fieldInfos = await getFieldInfos(client, upsertItemTypeId);
+								
+								// Parse JSON strings for special field types
 								for (const [key, value] of Object.entries(upsertFieldData)) {
 									// Skip helper fields
 									if (key.startsWith('_') && key.includes('helper')) {
@@ -1429,9 +1749,30 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim().startsWith('{')) {
+									if (typeof value === 'string' && value.trim()) {
+										const fieldInfo = fieldInfos[key];
+										const trimmedValue = value.trim();
+										
 										try {
-											upsertFieldData[key] = JSON.parse(value);
+											// Parse localized fields (objects)
+											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
+												upsertFieldData[key] = JSON.parse(trimmedValue);
+											}
+											// Parse modular content and other array fields
+											else if (fieldInfo?.field_type === 'modular_content' || 
+													fieldInfo?.field_type === 'links' || 
+													fieldInfo?.field_type === 'gallery') {
+												if (trimmedValue.startsWith('[')) {
+													upsertFieldData[key] = JSON.parse(trimmedValue);
+												} else {
+													// Single value - convert to array
+													upsertFieldData[key] = [trimmedValue];
+												}
+											}
+											// Parse other JSON objects/arrays
+											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
+												upsertFieldData[key] = JSON.parse(trimmedValue);
+											}
 										} catch (e) {
 											// If it's not valid JSON, keep it as a string
 										}
@@ -1941,6 +2282,87 @@ export class DatoCms implements INodeType {
 						case 'get':
 							const itemTypeId = this.getNodeParameter('itemTypeId', i) as string;
 							responseData = await client.itemTypes.find(itemTypeId);
+							break;
+					}
+				} else if (resource === 'block') {
+					switch (operation) {
+						case 'create':
+							const blockTypeParam = this.getNodeParameter('blockType', i) as any;
+							const blockType = blockTypeParam?.value || blockTypeParam;
+							const createFields = this.getNodeParameter('fields', i) as any;
+							
+							// Handle resourceMapper data
+							let fieldData: any = {};
+							if (createFields.mappingMode === 'defineBelow' && createFields.value) {
+								// Convert resourceMapper format to DatoCMS format
+								fieldData = { ...createFields.value };
+								
+								// Get field information for proper parsing
+								const fieldInfos = await getFieldInfos(client, blockType);
+								
+								// Parse JSON strings for special field types
+								for (const [key, value] of Object.entries(fieldData)) {
+									// Skip helper fields
+									if (key.startsWith('_') && key.includes('helper')) {
+										delete fieldData[key];
+										continue;
+									}
+									
+									if (typeof value === 'string' && value.trim()) {
+										const fieldInfo = fieldInfos[key];
+										const trimmedValue = value.trim();
+										
+										try {
+											// Parse localized fields (objects)
+											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
+												fieldData[key] = JSON.parse(trimmedValue);
+											}
+											// Parse JSON fields with checkbox group editor (they expect stringified JSON)
+											else if (fieldInfo?.field_type === 'json' && 
+													fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+												if (trimmedValue.startsWith('[')) {
+													// Parse array and stringify it for DatoCMS JSON field
+													const parsedArray = JSON.parse(trimmedValue);
+													fieldData[key] = JSON.stringify(parsedArray);
+												} else {
+													// Single value - convert to array and stringify
+													fieldData[key] = JSON.stringify([trimmedValue]);
+												}
+											}
+											// Parse modular content and other array fields
+											else if (fieldInfo?.field_type === 'modular_content' || 
+													fieldInfo?.field_type === 'links' || 
+													fieldInfo?.field_type === 'gallery') {
+												if (trimmedValue.startsWith('[')) {
+													fieldData[key] = JSON.parse(trimmedValue);
+												} else {
+													// Single value - convert to array
+													fieldData[key] = [trimmedValue];
+												}
+											}
+											// Parse other JSON objects/arrays
+											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
+												fieldData[key] = JSON.parse(trimmedValue);
+											}
+										} catch (e) {
+											// If it's not valid JSON, keep it as a string
+										}
+									}
+								}
+							} else if (createFields.mappingMode === 'autoMapInputData') {
+								// Auto-map from input data
+								const inputData = items[i].json;
+								fieldData = inputData;
+							}
+							
+							// Use buildBlockRecord to create the block
+							const blockRecord = buildBlockRecord({
+								item_type: { id: blockType, type: 'item_type' as const },
+								...fieldData,
+							});
+							
+							// The buildBlockRecord returns the block structure with an id
+							responseData = blockRecord;
 							break;
 					}
 				}

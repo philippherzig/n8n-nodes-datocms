@@ -82,6 +82,9 @@ n8n-nodes-datocms/
 - `getAll`: List all available content models
 - `get`: Get specific content model details
 
+#### Block Resource
+- `create`: Create new modular content blocks using buildBlockRecord with block type selection and field mapping
+
 ### Dynamic Features
 - **loadOptions Method**: Automatically populates content type dropdowns from DatoCMS API
 - **ResourceMapper Integration**: Automatically loads field schemas for visual mapping
@@ -196,6 +199,35 @@ The Get Many operation now supports advanced filtering by field values, allowing
    - Regular fields: Enter values directly
    - Localized fields: Use JSON format like `{"en": "My Post", "de": "Mein Beitrag"}`
 5. Auto Publish: ✅
+
+#### Creating a Modular Content Block
+1. Resource: Block
+2. Operation: Create
+3. Block Type: [Select from dropdown - shows only item types marked as modular blocks]
+4. Fields: Use ResourceMapper to map fields visually:
+   - Regular fields: Enter values directly
+   - Localized fields: Use JSON format like `{"en": "My Content", "de": "Mein Inhalt"}`
+   - JSON checkbox fields: Use array format like `["Mo", "Fr", "Sa"]` (automatically stringified)
+5. Returns: Block record with ID that can be used in modular content fields
+
+#### Working with JSON Checkbox Group Fields
+JSON fields with `string_checkbox_group` editor (like weekday selectors) now work seamlessly:
+
+**Input Format:**
+```json
+["Mo", "Fr", "Sa"]
+```
+
+**Automatic Processing:**
+- Parsed as array: `["Mo", "Fr", "Sa"]`
+- Stringified for DatoCMS: `"[\"Mo\",\"Fr\",\"Sa\"]"`
+- Single values automatically converted to arrays: `"Mo"` → `["Mo"]` → `"[\"Mo\"]"`
+
+**Use Cases:**
+- Weekday selectors
+- Category multi-select
+- Tag selection
+- Any checkbox group in JSON fields
 
 #### Syncing External Data (Upsert)
 1. Resource: Record
@@ -436,6 +468,29 @@ Set these in your DatoCMS project:
 - **Rich Output Format**: Returns uploads array, URL-to-upload mapping, error details, and processing statistics
 - **Data Structure Preservation**: Option to replace URLs in original data structure while maintaining all other fields
 - **Collection Support**: Optional assignment of uploads to DatoCMS collections for organization
+
+### Modular Content Block Support ✅
+- **Block Resource**: New resource type for creating modular content blocks
+- **Block Type Selection**: Dynamic dropdown showing only item types marked as modular blocks (`modular_block: true`)
+- **buildBlockRecord Integration**: Uses DatoCMS buildBlockRecord function for proper block structure creation
+- **Field Mapping**: Full ResourceMapper support for block fields with validation and localization
+- **Block-Specific Field Loading**: Separate `getBlockFields` method for loading block type fields
+- **ID Return**: Returns block record with ID for use in modular content fields
+- **Consistent UI**: Follows same patterns as record creation for familiar user experience
+
+### Enhanced Field Type Handling ✅
+- **Intelligent JSON Parsing**: Field parsing now considers DatoCMS field types for proper data transformation
+- **JSON Field Handling**: JSON fields are treated as strings (per DatoCMS spec: "accepts String values that are valid JSON")
+- **JSON Checkbox Group Support**: Special handling for `string_checkbox_group` JSON fields - converts arrays to stringified JSON
+- **Automatic JSON Stringification**: Checkbox group fields get `JSON.stringify()` applied to arrays for DatoCMS compatibility
+- **Modular Content Arrays**: Automatically converts string inputs to arrays for modular_content, links, and gallery fields
+- **Single Value Arrays**: Converts single string values to arrays when field expects array format
+- **Localized Field Support**: Enhanced parsing for localized fields with JSON object format
+- **Array Field Detection**: Recognizes `modular_content`, `links`, and `gallery` fields as array types
+- **Flexible Input**: Supports both JSON array format `["id1", "id2"]` and single values `"id1"`
+- **All Operations**: Consistent field parsing across create, update, upsert, and block operations
+- **Surgical Precision**: Changes only affect specifically targeted field types without impacting others
+- **Backward Compatibility**: Maintains existing parsing for all other field types
 
 ## Future Enhancements
 
