@@ -93,6 +93,12 @@ export class DatoCms implements INodeType {
 						action: 'Delete a record',
 					},
 					{
+						name: 'Bulk Delete',
+						value: 'bulkDelete',
+						description: 'Delete multiple records by IDs',
+						action: 'Bulk delete records',
+					},
+					{
 						name: 'Get',
 						value: 'get',
 						description: 'Get a record',
@@ -225,7 +231,7 @@ export class DatoCms implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['record'],
-						operation: ['create', 'getAll', 'update', 'upsert', 'delete', 'publish', 'unpublish'],
+						operation: ['create', 'getAll', 'update', 'upsert', 'publish', 'unpublish'],
 					},
 				},
 				modes: [
@@ -295,6 +301,22 @@ export class DatoCms implements INodeType {
 				default: '',
 				required: true,
 				description: 'The ID of the record',
+			},
+			// Record IDs field for bulk delete
+			{
+				displayName: 'Record IDs',
+				name: 'recordIds',
+				type: 'json',
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['bulkDelete'],
+					},
+				},
+				default: '[]',
+				required: true,
+				description: 'Array of record IDs to delete (max 200 IDs). Example: ["id1", "id2", "id3"]',
+				placeholder: '["record_id_1", "record_id_2"]',
 			},
 			// Fields for record creation
 			{
@@ -1504,7 +1526,7 @@ export class DatoCms implements INodeType {
 				if (resource === 'record') {
 					// Only get itemType for operations that need it
 					let itemType: string | undefined;
-					if (operation !== 'get') {
+					if (operation !== 'get' && operation !== 'delete' && operation !== 'bulkDelete') {
 						const itemTypeParam = this.getNodeParameter('itemType', i) as any;
 						// Extract the value from resource locator
 						itemType = itemTypeParam?.value || itemTypeParam;
@@ -1962,6 +1984,45 @@ export class DatoCms implements INodeType {
 						case 'delete':
 							const deleteRecordId = this.getNodeParameter('recordId', i) as string;
 							responseData = await client.items.destroy(deleteRecordId);
+							break;
+						case 'bulkDelete':
+							const recordIdsInput = this.getNodeParameter('recordIds', i) as string | string[];
+							let recordIds: string[];
+							
+							// Handle different input formats
+							if (typeof recordIdsInput === 'string') {
+								try {
+									recordIds = JSON.parse(recordIdsInput);
+								} catch (error) {
+									throw new NodeOperationError(this.getNode(), 'Invalid JSON format for Record IDs. Expected array of strings.');
+								}
+							} else {
+								recordIds = recordIdsInput;
+							}
+							
+							// Validate array
+							if (!Array.isArray(recordIds)) {
+								throw new NodeOperationError(this.getNode(), 'Record IDs must be an array of strings.');
+							}
+							
+							// Check DatoCMS limit of 200 items
+							if (recordIds.length > 200) {
+								throw new NodeOperationError(this.getNode(), 'DatoCMS allows maximum 200 records per bulk delete operation.');
+							}
+							
+							if (recordIds.length === 0) {
+								throw new NodeOperationError(this.getNode(), 'At least one record ID is required.');
+							}
+							
+							// Convert to DatoCMS bulk destroy format
+							const itemsToDelete = recordIds.map(id => ({
+								type: 'item' as const,
+								id: id
+							}));
+							
+							responseData = await client.items.bulkDestroy({
+								items: itemsToDelete
+							});
 							break;
 
 						case 'publish':

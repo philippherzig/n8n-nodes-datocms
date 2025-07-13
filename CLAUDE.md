@@ -67,7 +67,8 @@ n8n-nodes-datocms/
 - `get`: Retrieve single record by ID
 - `getAll`: List all records filtered by content type with advanced field filtering
 - `update`: Update existing records by internal DatoCMS Record ID with ResourceMapper field interface and auto-publish option
-- `delete`: Remove records
+- `delete`: Remove single record by ID
+- `bulkDelete`: Remove multiple records by IDs (max 200 per request)
 - `publish`: Publish draft records
 - `unpublish`: Unpublish live records
 
@@ -199,6 +200,15 @@ The Get Many operation now supports advanced filtering by field values, allowing
    - Regular fields: Enter values directly
    - Localized fields: Use JSON format like `{"en": "My Post", "de": "Mein Beitrag"}`
 5. Auto Publish: ✅
+
+#### Bulk Deleting Records
+1. Resource: Record
+2. Operation: Bulk Delete
+3. Record IDs: Array of record IDs to delete
+   - Direct array: `["record_id_1", "record_id_2", "record_id_3"]`
+   - From expression: `{{ $json.items.map(item => item.id) }}`
+   - Maximum 200 records per request
+4. Returns: Array of deleted record information
 
 #### Creating a Modular Content Block
 1. Resource: Block
