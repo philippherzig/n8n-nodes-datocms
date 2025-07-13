@@ -845,7 +845,7 @@ export class DatoCms implements INodeType {
 					minValue: 1,
 				},
 				default: 50,
-				description: 'Max number of results to return',
+				description: 'Max number of results to return. Note: When "Nested" is enabled for records, the limit is automatically capped at 30 due to DatoCMS API restrictions.',
 			},
 			{
 				displayName: 'Fields',
@@ -894,6 +894,20 @@ export class DatoCms implements INodeType {
 				},
 				default: true,
 				description: 'Whether to create a new record if no matching record is found',
+			},
+			// Nested parameter for get and getAll operations
+			{
+				displayName: 'Nested',
+				name: 'nested',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['get', 'getAll'],
+					},
+				},
+				default: false,
+				description: 'Whether to include nested data for related records. When enabled, referenced records are included as objects instead of just IDs.',
 			},
 			{
 				displayName: 'Additional Fields',
@@ -1579,13 +1593,26 @@ export class DatoCms implements INodeType {
 
 						case 'get':
 							const getRecordId = this.getNodeParameter('recordId', i) as string;
-							responseData = await client.items.find(getRecordId);
+							const getNested = this.getNodeParameter('nested', i, false) as boolean;
+							
+							const getParams: any = {};
+							if (getNested) {
+								getParams.nested = true;
+							}
+							
+							responseData = await client.items.find(getRecordId, getParams);
 							break;
 
 						case 'getAll':
 							const returnAll = this.getNodeParameter('returnAll', i) as boolean;
-							const limit = this.getNodeParameter('limit', i, 50) as number;
+							let limit = this.getNodeParameter('limit', i, 50) as number;
 							const filters = this.getNodeParameter('filters', i, {}) as any;
+							const getAllNested = this.getNodeParameter('nested', i, false) as boolean;
+							
+							// Enforce DatoCMS API limit when nested is enabled
+							if (getAllNested && !returnAll && limit > 30) {
+								limit = 30;
+							}
 							
 							// Build filter object
 							const filterParams: any = {
@@ -1593,6 +1620,11 @@ export class DatoCms implements INodeType {
 									type: itemType,
 								},
 							};
+							
+							// Add nested parameter if enabled
+							if (getAllNested) {
+								filterParams.nested = true;
+							}
 							
 							// Add field filters if any
 							if (filters.filter && Array.isArray(filters.filter) && filters.filter.length > 0) {
