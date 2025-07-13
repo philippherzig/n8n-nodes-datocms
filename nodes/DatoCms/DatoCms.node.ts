@@ -1532,26 +1532,42 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim()) {
-										const fieldInfo = fieldInfos[key];
+									const fieldInfo = fieldInfos[key];
+									
+									// Handle JSON fields with checkbox group editor - they need stringified arrays
+									if (fieldInfo?.field_type === 'json' && 
+											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+										if (Array.isArray(value)) {
+											// Direct array input - stringify with formatting
+											fieldData[key] = JSON.stringify(value, null, 2);
+										} else if (typeof value === 'string' && value.trim()) {
+											const trimmedValue = value.trim();
+											if (trimmedValue.startsWith('[')) {
+												// Parse array and stringify it for DatoCMS JSON field with formatting
+												try {
+													const parsedArray = JSON.parse(trimmedValue);
+													fieldData[key] = JSON.stringify(parsedArray, null, 2);
+												} catch (e) {
+													// If parsing fails, treat as single value
+													fieldData[key] = JSON.stringify([trimmedValue], null, 2);
+												}
+											} else {
+												// Single value - convert to array and stringify with formatting
+												fieldData[key] = JSON.stringify([trimmedValue], null, 2);
+											}
+										} else if (value !== null && value !== undefined) {
+											// Any other value - convert to array and stringify
+											fieldData[key] = JSON.stringify([value], null, 2);
+										}
+									}
+									// Handle other field types that need string parsing
+									else if (typeof value === 'string' && value.trim()) {
 										const trimmedValue = value.trim();
 										
 										try {
 											// Parse localized fields (objects)
 											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
 												fieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse JSON fields with checkbox group editor (they expect stringified JSON)
-											else if (fieldInfo?.field_type === 'json' && 
-													fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-												if (trimmedValue.startsWith('[')) {
-													// Parse array and stringify it for DatoCMS JSON field
-													const parsedArray = JSON.parse(trimmedValue);
-													fieldData[key] = JSON.stringify(parsedArray);
-												} else {
-													// Single value - convert to array and stringify
-													fieldData[key] = JSON.stringify([trimmedValue]);
-												}
 											}
 											// Parse modular content and other array fields
 											else if (fieldInfo?.field_type === 'modular_content' || 
@@ -1705,8 +1721,36 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim()) {
-										const fieldInfo = fieldInfos[key];
+									const fieldInfo = fieldInfos[key];
+									
+									// Handle JSON fields with checkbox group editor - they need stringified arrays
+									if (fieldInfo?.field_type === 'json' && 
+											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+										if (Array.isArray(value)) {
+											// Direct array input - stringify with formatting
+											updateFieldData[key] = JSON.stringify(value, null, 2);
+										} else if (typeof value === 'string' && value.trim()) {
+											const trimmedValue = value.trim();
+											if (trimmedValue.startsWith('[')) {
+												// Parse array and stringify it for DatoCMS JSON field with formatting
+												try {
+													const parsedArray = JSON.parse(trimmedValue);
+													updateFieldData[key] = JSON.stringify(parsedArray, null, 2);
+												} catch (e) {
+													// If parsing fails, treat as single value
+													updateFieldData[key] = JSON.stringify([trimmedValue], null, 2);
+												}
+											} else {
+												// Single value - convert to array and stringify with formatting
+												updateFieldData[key] = JSON.stringify([trimmedValue], null, 2);
+											}
+										} else if (value !== null && value !== undefined) {
+											// Any other value - convert to array and stringify
+											updateFieldData[key] = JSON.stringify([value], null, 2);
+										}
+									}
+									// Handle other field types that need string parsing
+									else if (typeof value === 'string' && value.trim()) {
 										const trimmedValue = value.trim();
 										
 										try {
@@ -1781,8 +1825,36 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim()) {
-										const fieldInfo = fieldInfos[key];
+									const fieldInfo = fieldInfos[key];
+									
+									// Handle JSON fields with checkbox group editor - they need stringified arrays
+									if (fieldInfo?.field_type === 'json' && 
+											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+										if (Array.isArray(value)) {
+											// Direct array input - stringify with formatting
+											upsertFieldData[key] = JSON.stringify(value, null, 2);
+										} else if (typeof value === 'string' && value.trim()) {
+											const trimmedValue = value.trim();
+											if (trimmedValue.startsWith('[')) {
+												// Parse array and stringify it for DatoCMS JSON field with formatting
+												try {
+													const parsedArray = JSON.parse(trimmedValue);
+													upsertFieldData[key] = JSON.stringify(parsedArray, null, 2);
+												} catch (e) {
+													// If parsing fails, treat as single value
+													upsertFieldData[key] = JSON.stringify([trimmedValue], null, 2);
+												}
+											} else {
+												// Single value - convert to array and stringify with formatting
+												upsertFieldData[key] = JSON.stringify([trimmedValue], null, 2);
+											}
+										} else if (value !== null && value !== undefined) {
+											// Any other value - convert to array and stringify
+											upsertFieldData[key] = JSON.stringify([value], null, 2);
+										}
+									}
+									// Handle other field types that need string parsing
+									else if (typeof value === 'string' && value.trim()) {
 										const trimmedValue = value.trim();
 										
 										try {
@@ -2340,26 +2412,42 @@ export class DatoCms implements INodeType {
 										continue;
 									}
 									
-									if (typeof value === 'string' && value.trim()) {
-										const fieldInfo = fieldInfos[key];
+									const fieldInfo = fieldInfos[key];
+									
+									// Handle JSON fields with checkbox group editor - they need stringified arrays
+									if (fieldInfo?.field_type === 'json' && 
+											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
+										if (Array.isArray(value)) {
+											// Direct array input - stringify with formatting
+											fieldData[key] = JSON.stringify(value, null, 2);
+										} else if (typeof value === 'string' && value.trim()) {
+											const trimmedValue = value.trim();
+											if (trimmedValue.startsWith('[')) {
+												// Parse array and stringify it for DatoCMS JSON field with formatting
+												try {
+													const parsedArray = JSON.parse(trimmedValue);
+													fieldData[key] = JSON.stringify(parsedArray, null, 2);
+												} catch (e) {
+													// If parsing fails, treat as single value
+													fieldData[key] = JSON.stringify([trimmedValue], null, 2);
+												}
+											} else {
+												// Single value - convert to array and stringify with formatting
+												fieldData[key] = JSON.stringify([trimmedValue], null, 2);
+											}
+										} else if (value !== null && value !== undefined) {
+											// Any other value - convert to array and stringify
+											fieldData[key] = JSON.stringify([value], null, 2);
+										}
+									}
+									// Handle other field types that need string parsing
+									else if (typeof value === 'string' && value.trim()) {
 										const trimmedValue = value.trim();
 										
 										try {
 											// Parse localized fields (objects)
 											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
 												fieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse JSON fields with checkbox group editor (they expect stringified JSON)
-											else if (fieldInfo?.field_type === 'json' && 
-													fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-												if (trimmedValue.startsWith('[')) {
-													// Parse array and stringify it for DatoCMS JSON field
-													const parsedArray = JSON.parse(trimmedValue);
-													fieldData[key] = JSON.stringify(parsedArray);
-												} else {
-													// Single value - convert to array and stringify
-													fieldData[key] = JSON.stringify([trimmedValue]);
-												}
 											}
 											// Parse modular content and other array fields
 											else if (fieldInfo?.field_type === 'modular_content' || 

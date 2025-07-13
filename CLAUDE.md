@@ -213,21 +213,36 @@ The Get Many operation now supports advanced filtering by field values, allowing
 #### Working with JSON Checkbox Group Fields
 JSON fields with `string_checkbox_group` editor (like weekday selectors) now work seamlessly:
 
-**Input Format:**
-```json
-["Mo", "Fr", "Sa"]
-```
+**Input Formats (all work automatically):**
+- Direct array: `["Mo", "Fr", "Sa"]` 
+- String array: `"[\"Mo\",\"Fr\",\"Sa\"]"`
+- Single value: `"Mo"`
+- Expression: `{{ $json.weekday }}` (no `.toJsonString()` needed!)
 
 **Automatic Processing:**
-- Parsed as array: `["Mo", "Fr", "Sa"]`
-- Stringified for DatoCMS: `"[\"Mo\",\"Fr\",\"Sa\"]"`
-- Single values automatically converted to arrays: `"Mo"` → `["Mo"]` → `"[\"Mo\"]"`
+- Arrays are automatically detected and stringified with DatoCMS formatting
+- Output format: `"[\n  \"Mo\",\n  \"Fr\",\n  \"Sa\"\n]"` (pretty-printed)
+- Single values converted to arrays: `"Mo"` → `"[\n  \"Mo\"\n]"`
+- Works in all operations: Create, Update, Upsert, and Block Create
 
 **Use Cases:**
 - Weekday selectors
 - Category multi-select
 - Tag selection
 - Any checkbox group in JSON fields
+
+**Example:**
+```javascript
+// Input from your workflow
+{
+  "weekday": ["Fr", "Sa"]  // Direct array - no conversion needed!
+}
+
+// Automatically converted to DatoCMS format:
+{
+  "weekday": "[\n  \"Fr\",\n  \"Sa\"\n]"
+}
+```
 
 #### Syncing External Data (Upsert)
 1. Resource: Record
@@ -482,7 +497,9 @@ Set these in your DatoCMS project:
 - **Intelligent JSON Parsing**: Field parsing now considers DatoCMS field types for proper data transformation
 - **JSON Field Handling**: JSON fields are treated as strings (per DatoCMS spec: "accepts String values that are valid JSON")
 - **JSON Checkbox Group Support**: Special handling for `string_checkbox_group` JSON fields - converts arrays to stringified JSON
-- **Automatic JSON Stringification**: Checkbox group fields get `JSON.stringify()` applied to arrays for DatoCMS compatibility
+- **Automatic Array Detection**: Direct array inputs (e.g., from expressions like `{{ $json.weekday }}`) are automatically converted - no `.toJsonString()` needed!
+- **DatoCMS-Compatible Formatting**: Uses `JSON.stringify(array, null, 2)` to match DatoCMS's pretty-printed format
+- **Consistent Formatting**: All operations produce identical JSON formatting for easy comparison and updates
 - **Modular Content Arrays**: Automatically converts string inputs to arrays for modular_content, links, and gallery fields
 - **Single Value Arrays**: Converts single string values to arrays when field expects array format
 - **Localized Field Support**: Enhanced parsing for localized fields with JSON object format
