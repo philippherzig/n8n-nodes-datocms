@@ -845,7 +845,7 @@ export class DatoCms implements INodeType {
 					minValue: 1,
 				},
 				default: 50,
-				description: 'Max number of results to return. Note: When "Nested" is enabled for records, the limit is automatically capped at 30 due to DatoCMS API restrictions.',
+				description: 'Max number of results to return',
 			},
 			{
 				displayName: 'Fields',
