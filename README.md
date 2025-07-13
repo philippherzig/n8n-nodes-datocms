@@ -6,6 +6,14 @@ This is an n8n community node that provides a simplified interface for DatoCMS o
 
 [DatoCMS](https://www.datocms.com/) is a headless CMS for modern web and mobile applications.
 
+## ⚠️ Early Development Notice
+
+**This integration is in early development stages.** 
+- Expect bugs and issues
+- Production use is not recommended without thorough testing
+- Breaking changes may occur in future updates
+- Please report issues on [GitHub](https://github.com/philippherzig/n8n-nodes-datocms/issues)
+
 ## Installation
 
 Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
@@ -48,6 +56,10 @@ npm install n8n-nodes-datocms
 
 - **Get** - Get details of a specific content model
 - **Get Many** - List all available content models
+
+### Blocks
+
+- **Create** - Create modular content blocks for use in modular content fields
 
 ## Features
 
@@ -126,6 +138,14 @@ To use this node, you need to create DatoCMS API credentials:
 4. In ResourceMapper, select matching fields (e.g., external_id, SKU)
 5. Map all other fields
 6. Enable **Create If Not Found** to create new records when no match exists
+
+### Creating Modular Content Blocks
+
+1. Select **Resource**: Block
+2. Select **Operation**: Create
+3. Choose your **Block Type** from available modular blocks
+4. Map fields using the visual ResourceMapper
+5. Use the complete returned block object (including ID) in modular content fields
 
 ## Compatibility
 
