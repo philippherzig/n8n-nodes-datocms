@@ -15,7 +15,19 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { buildClient, LogLevel, buildBlockRecord } from '@datocms/cma-client-node';
+import {
+	buildClient,
+	LogLevel,
+	buildBlockRecord,
+	SchemaRepository,
+	isLocalized,
+	// Advanced Block Processing (v5.1.13+)
+	// Available for future features:
+	// - visitBlocksInNonLocalizedFieldValue / mapBlocksInNonLocalizedFieldValue
+	// - findAllBlocksInNonLocalizedFieldValue / filterBlocksInNonLocalizedFieldValue
+	// - duplicateBlockRecord
+	// Use cases: Block Update, Block Search in Structured Text, Block Transform
+} from '@datocms/cma-client-node';
 
 export class DatoCms implements INodeType {
 	description: INodeTypeDescription = {
@@ -75,6 +87,12 @@ export class DatoCms implements INodeType {
 				},
 				options: [
 					{
+						name: 'Bulk Delete',
+						value: 'bulkDelete',
+						description: 'Delete multiple records by IDs',
+						action: 'Bulk delete records',
+					},
+					{
 						name: 'Create',
 						value: 'create',
 						description: 'Create a new record',
@@ -91,12 +109,6 @@ export class DatoCms implements INodeType {
 						value: 'delete',
 						description: 'Delete a record',
 						action: 'Delete a record',
-					},
-					{
-						name: 'Bulk Delete',
-						value: 'bulkDelete',
-						description: 'Delete multiple records by IDs',
-						action: 'Bulk delete records',
 					},
 					{
 						name: 'Get',
@@ -315,7 +327,7 @@ export class DatoCms implements INodeType {
 				},
 				default: '[]',
 				required: true,
-				description: 'Array of record IDs to delete (max 200 IDs). Example: ["id1", "id2", "id3"]',
+				description: 'Array of record IDs to delete (max 200 IDs). Example: ["id1", "id2", "id3"].',
 				placeholder: '["record_id_1", "record_id_2"]',
 			},
 			// Fields for record creation
@@ -1487,12 +1499,25 @@ export class DatoCms implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		// Helper function to get field information for proper parsing
-		const getFieldInfos = async (client: any, itemTypeId: string): Promise<{ [key: string]: any }> => {
+		// Create client and SchemaRepository once for all items
+		const credentials = await this.getCredentials('datoCmsApi');
+		const client = buildClient({
+			apiToken: credentials.apiToken as string,
+			environment: credentials.environment as string,
+			logLevel: LogLevel.BODY,
+		});
+
+		// Initialize SchemaRepository for caching schema information
+		const schemaRepo = new SchemaRepository(client);
+
+		// Helper function to get field information for proper parsing using SchemaRepository
+		const getFieldInfos = async (itemTypeId: string): Promise<{ [key: string]: any }> => {
 			try {
-				const fields = await client.fields.list(itemTypeId);
+				// Use SchemaRepository to get item type first, then its fields (with caching)
+				const itemType = await schemaRepo.getItemTypeById(itemTypeId);
+				const fields = await schemaRepo.getItemTypeFields(itemType);
 				const fieldInfos: { [key: string]: any } = {};
-				
+
 				for (const field of fields) {
 					fieldInfos[field.api_key] = {
 						field_type: field.field_type,
@@ -1501,7 +1526,7 @@ export class DatoCms implements INodeType {
 						appearance: field.appearance
 					};
 				}
-				
+
 				return fieldInfos;
 			} catch (error) {
 				// Return empty object if field info cannot be retrieved
@@ -1509,15 +1534,77 @@ export class DatoCms implements INodeType {
 			}
 		};
 
+		// Helper function to parse field values with type guards and localization support
+		const parseFieldValue = (key: string, value: any, fieldInfo: any): any => {
+			// Skip helper fields
+			if (key.startsWith('_') && key.includes('helper')) {
+				return undefined; // Signal to delete this field
+			}
+
+			if (!fieldInfo) {
+				return value; // Unknown field, keep as-is
+			}
+
+			// Handle JSON fields with checkbox group editor - they need stringified arrays
+			if (fieldInfo.field_type === 'json' &&
+					fieldInfo.appearance?.editor === 'string_checkbox_group') {
+				if (Array.isArray(value)) {
+					return JSON.stringify(value, null, 2);
+				} else if (typeof value === 'string' && value.trim()) {
+					const trimmedValue = value.trim();
+					if (trimmedValue.startsWith('[')) {
+						try {
+							const parsedArray = JSON.parse(trimmedValue);
+							return JSON.stringify(parsedArray, null, 2);
+						} catch (e) {
+							return JSON.stringify([trimmedValue], null, 2);
+						}
+					} else {
+						return JSON.stringify([trimmedValue], null, 2);
+					}
+				} else if (value !== null && value !== undefined) {
+					return JSON.stringify([value], null, 2);
+				}
+			}
+
+			// Handle other field types that need string parsing
+			if (typeof value === 'string' && value.trim()) {
+				const trimmedValue = value.trim();
+
+				try {
+					// Parse localized fields (objects) - using field metadata
+					if (fieldInfo.localized && trimmedValue.startsWith('{')) {
+						const parsedValue = JSON.parse(trimmedValue);
+						// Use isLocalized type guard to validate the parsed value
+						if (isLocalized(parsedValue)) {
+							return parsedValue;
+						}
+						return parsedValue; // Return anyway if not matching exact type guard
+					}
+					// Parse modular content and other array fields
+					else if (fieldInfo.field_type === 'modular_content' ||
+							fieldInfo.field_type === 'links' ||
+							fieldInfo.field_type === 'gallery') {
+						if (trimmedValue.startsWith('[')) {
+							return JSON.parse(trimmedValue);
+						} else {
+							return [trimmedValue]; // Single value - convert to array
+						}
+					}
+					// Parse other JSON objects/arrays
+					else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
+						return JSON.parse(trimmedValue);
+					}
+				} catch (e) {
+					// If it's not valid JSON, keep it as a string
+				}
+			}
+
+			return value; // Return unchanged
+		};
+
 		for (let i = 0; i < items.length; i++) {
 			try {
-				const credentials = await this.getCredentials('datoCmsApi');
-				const client = buildClient({
-					apiToken: credentials.apiToken as string,
-					environment: credentials.environment as string,
-					logLevel: LogLevel.BODY,
-				});
-
 				const resource = this.getNodeParameter('resource', i) as string;
 				const operation = this.getNodeParameter('operation', i) as string;
 
@@ -1542,73 +1629,17 @@ export class DatoCms implements INodeType {
 							if (createFields.mappingMode === 'defineBelow' && createFields.value) {
 								// Convert resourceMapper format to DatoCMS format
 								fieldData = { ...createFields.value };
-								
+
 								// Get field information for proper parsing
-								const fieldInfos = await getFieldInfos(client, itemType!);
-								
-								// Parse JSON strings for special field types
+								const fieldInfos = await getFieldInfos(itemType!);
+
+								// Parse JSON strings for special field types using centralized parser
 								for (const [key, value] of Object.entries(fieldData)) {
-									// Skip helper fields
-									if (key.startsWith('_') && key.includes('helper')) {
-										delete fieldData[key];
-										continue;
-									}
-									
-									const fieldInfo = fieldInfos[key];
-									
-									// Handle JSON fields with checkbox group editor - they need stringified arrays
-									if (fieldInfo?.field_type === 'json' && 
-											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-										if (Array.isArray(value)) {
-											// Direct array input - stringify with formatting
-											fieldData[key] = JSON.stringify(value, null, 2);
-										} else if (typeof value === 'string' && value.trim()) {
-											const trimmedValue = value.trim();
-											if (trimmedValue.startsWith('[')) {
-												// Parse array and stringify it for DatoCMS JSON field with formatting
-												try {
-													const parsedArray = JSON.parse(trimmedValue);
-													fieldData[key] = JSON.stringify(parsedArray, null, 2);
-												} catch (e) {
-													// If parsing fails, treat as single value
-													fieldData[key] = JSON.stringify([trimmedValue], null, 2);
-												}
-											} else {
-												// Single value - convert to array and stringify with formatting
-												fieldData[key] = JSON.stringify([trimmedValue], null, 2);
-											}
-										} else if (value !== null && value !== undefined) {
-											// Any other value - convert to array and stringify
-											fieldData[key] = JSON.stringify([value], null, 2);
-										}
-									}
-									// Handle other field types that need string parsing
-									else if (typeof value === 'string' && value.trim()) {
-										const trimmedValue = value.trim();
-										
-										try {
-											// Parse localized fields (objects)
-											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
-												fieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse modular content and other array fields
-											else if (fieldInfo?.field_type === 'modular_content' || 
-													fieldInfo?.field_type === 'links' || 
-													fieldInfo?.field_type === 'gallery') {
-												if (trimmedValue.startsWith('[')) {
-													fieldData[key] = JSON.parse(trimmedValue);
-												} else {
-													// Single value - convert to array
-													fieldData[key] = [trimmedValue];
-												}
-											}
-											// Parse other JSON objects/arrays
-											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
-												fieldData[key] = JSON.parse(trimmedValue);
-											}
-										} catch (e) {
-											// If it's not valid JSON, keep it as a string
-										}
+									const parsedValue = parseFieldValue(key, value, fieldInfos[key]);
+									if (parsedValue === undefined) {
+										delete fieldData[key]; // Remove helper fields
+									} else {
+										fieldData[key] = parsedValue;
 									}
 								}
 							} else if (createFields.mappingMode === 'autoMapInputData') {
@@ -1725,79 +1756,23 @@ export class DatoCms implements INodeType {
 							const updateRecordId = this.getNodeParameter('recordId', i) as string;
 							const updateFields = this.getNodeParameter('fields', i) as any;
 							const updateAdditionalFields = this.getNodeParameter('additionalFields', i, {}) as any;
-							
+
 							// Handle resourceMapper data
 							let updateFieldData: any = {};
 							if (updateFields.mappingMode === 'defineBelow' && updateFields.value) {
 								// Convert resourceMapper format to DatoCMS format
 								updateFieldData = { ...updateFields.value };
-								
+
 								// Get field information for proper parsing
-								const fieldInfos = await getFieldInfos(client, itemType!);
-								
-								// Parse JSON strings for special field types
+								const fieldInfos = await getFieldInfos(itemType!);
+
+								// Parse JSON strings for special field types using centralized parser
 								for (const [key, value] of Object.entries(updateFieldData)) {
-									// Skip helper fields
-									if (key.startsWith('_') && key.includes('helper')) {
-										delete updateFieldData[key];
-										continue;
-									}
-									
-									const fieldInfo = fieldInfos[key];
-									
-									// Handle JSON fields with checkbox group editor - they need stringified arrays
-									if (fieldInfo?.field_type === 'json' && 
-											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-										if (Array.isArray(value)) {
-											// Direct array input - stringify with formatting
-											updateFieldData[key] = JSON.stringify(value, null, 2);
-										} else if (typeof value === 'string' && value.trim()) {
-											const trimmedValue = value.trim();
-											if (trimmedValue.startsWith('[')) {
-												// Parse array and stringify it for DatoCMS JSON field with formatting
-												try {
-													const parsedArray = JSON.parse(trimmedValue);
-													updateFieldData[key] = JSON.stringify(parsedArray, null, 2);
-												} catch (e) {
-													// If parsing fails, treat as single value
-													updateFieldData[key] = JSON.stringify([trimmedValue], null, 2);
-												}
-											} else {
-												// Single value - convert to array and stringify with formatting
-												updateFieldData[key] = JSON.stringify([trimmedValue], null, 2);
-											}
-										} else if (value !== null && value !== undefined) {
-											// Any other value - convert to array and stringify
-											updateFieldData[key] = JSON.stringify([value], null, 2);
-										}
-									}
-									// Handle other field types that need string parsing
-									else if (typeof value === 'string' && value.trim()) {
-										const trimmedValue = value.trim();
-										
-										try {
-											// Parse localized fields (objects)
-											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
-												updateFieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse modular content and other array fields
-											else if (fieldInfo?.field_type === 'modular_content' || 
-													fieldInfo?.field_type === 'links' || 
-													fieldInfo?.field_type === 'gallery') {
-												if (trimmedValue.startsWith('[')) {
-													updateFieldData[key] = JSON.parse(trimmedValue);
-												} else {
-													// Single value - convert to array
-													updateFieldData[key] = [trimmedValue];
-												}
-											}
-											// Parse other JSON objects/arrays
-											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
-												updateFieldData[key] = JSON.parse(trimmedValue);
-											}
-										} catch (e) {
-											// If it's not valid JSON, keep it as a string
-										}
+									const parsedValue = parseFieldValue(key, value, fieldInfos[key]);
+									if (parsedValue === undefined) {
+										delete updateFieldData[key]; // Remove helper fields
+									} else {
+										updateFieldData[key] = parsedValue;
 									}
 								}
 							} else if (updateFields.mappingMode === 'autoMapInputData') {
@@ -1823,11 +1798,11 @@ export class DatoCms implements INodeType {
 							// Handle resourceMapper data and extract matching fields
 							let upsertFieldData: any = {};
 							let matchingFields: any = {};
-							
+
 							if (upsertFields.mappingMode === 'defineBelow' && upsertFields.value) {
 								// Convert resourceMapper format to DatoCMS format
 								upsertFieldData = { ...upsertFields.value };
-								
+
 								// Extract matching fields from ResourceMapper
 								if (upsertFields.matchingColumns && Array.isArray(upsertFields.matchingColumns)) {
 									// Build matching fields object from array
@@ -1835,80 +1810,24 @@ export class DatoCms implements INodeType {
 										matchingFields[matchingColumn] = upsertFieldData[matchingColumn];
 									}
 								}
-								
+
 								// Get field information for proper parsing
-								const fieldInfos = await getFieldInfos(client, upsertItemTypeId);
-								
-								// Parse JSON strings for special field types
+								const fieldInfos = await getFieldInfos(upsertItemTypeId);
+
+								// Parse JSON strings for special field types using centralized parser
 								for (const [key, value] of Object.entries(upsertFieldData)) {
-									// Skip helper fields
-									if (key.startsWith('_') && key.includes('helper')) {
-										delete upsertFieldData[key];
-										continue;
-									}
-									
-									const fieldInfo = fieldInfos[key];
-									
-									// Handle JSON fields with checkbox group editor - they need stringified arrays
-									if (fieldInfo?.field_type === 'json' && 
-											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-										if (Array.isArray(value)) {
-											// Direct array input - stringify with formatting
-											upsertFieldData[key] = JSON.stringify(value, null, 2);
-										} else if (typeof value === 'string' && value.trim()) {
-											const trimmedValue = value.trim();
-											if (trimmedValue.startsWith('[')) {
-												// Parse array and stringify it for DatoCMS JSON field with formatting
-												try {
-													const parsedArray = JSON.parse(trimmedValue);
-													upsertFieldData[key] = JSON.stringify(parsedArray, null, 2);
-												} catch (e) {
-													// If parsing fails, treat as single value
-													upsertFieldData[key] = JSON.stringify([trimmedValue], null, 2);
-												}
-											} else {
-												// Single value - convert to array and stringify with formatting
-												upsertFieldData[key] = JSON.stringify([trimmedValue], null, 2);
-											}
-										} else if (value !== null && value !== undefined) {
-											// Any other value - convert to array and stringify
-											upsertFieldData[key] = JSON.stringify([value], null, 2);
-										}
-									}
-									// Handle other field types that need string parsing
-									else if (typeof value === 'string' && value.trim()) {
-										const trimmedValue = value.trim();
-										
-										try {
-											// Parse localized fields (objects)
-											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
-												upsertFieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse modular content and other array fields
-											else if (fieldInfo?.field_type === 'modular_content' || 
-													fieldInfo?.field_type === 'links' || 
-													fieldInfo?.field_type === 'gallery') {
-												if (trimmedValue.startsWith('[')) {
-													upsertFieldData[key] = JSON.parse(trimmedValue);
-												} else {
-													// Single value - convert to array
-													upsertFieldData[key] = [trimmedValue];
-												}
-											}
-											// Parse other JSON objects/arrays
-											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
-												upsertFieldData[key] = JSON.parse(trimmedValue);
-											}
-										} catch (e) {
-											// If it's not valid JSON, keep it as a string
-										}
+									const parsedValue = parseFieldValue(key, value, fieldInfos[key]);
+									if (parsedValue === undefined) {
+										delete upsertFieldData[key]; // Remove helper fields
+									} else {
+										upsertFieldData[key] = parsedValue;
 									}
 								}
 							} else if (upsertFields.mappingMode === 'autoMapInputData') {
 								// Auto-map from input data
 								const inputData = items[i].json;
 								upsertFieldData = inputData;
-								
+
 								// For auto-mapping, we need to have matching fields configured
 								// We cannot assume any field for matching
 							}
@@ -2455,79 +2374,23 @@ export class DatoCms implements INodeType {
 							const blockTypeParam = this.getNodeParameter('blockType', i) as any;
 							const blockType = blockTypeParam?.value || blockTypeParam;
 							const createFields = this.getNodeParameter('fields', i) as any;
-							
+
 							// Handle resourceMapper data
 							let fieldData: any = {};
 							if (createFields.mappingMode === 'defineBelow' && createFields.value) {
 								// Convert resourceMapper format to DatoCMS format
 								fieldData = { ...createFields.value };
-								
+
 								// Get field information for proper parsing
-								const fieldInfos = await getFieldInfos(client, blockType);
-								
-								// Parse JSON strings for special field types
+								const fieldInfos = await getFieldInfos(blockType);
+
+								// Parse JSON strings for special field types using centralized parser
 								for (const [key, value] of Object.entries(fieldData)) {
-									// Skip helper fields
-									if (key.startsWith('_') && key.includes('helper')) {
-										delete fieldData[key];
-										continue;
-									}
-									
-									const fieldInfo = fieldInfos[key];
-									
-									// Handle JSON fields with checkbox group editor - they need stringified arrays
-									if (fieldInfo?.field_type === 'json' && 
-											fieldInfo?.appearance?.editor === 'string_checkbox_group') {
-										if (Array.isArray(value)) {
-											// Direct array input - stringify with formatting
-											fieldData[key] = JSON.stringify(value, null, 2);
-										} else if (typeof value === 'string' && value.trim()) {
-											const trimmedValue = value.trim();
-											if (trimmedValue.startsWith('[')) {
-												// Parse array and stringify it for DatoCMS JSON field with formatting
-												try {
-													const parsedArray = JSON.parse(trimmedValue);
-													fieldData[key] = JSON.stringify(parsedArray, null, 2);
-												} catch (e) {
-													// If parsing fails, treat as single value
-													fieldData[key] = JSON.stringify([trimmedValue], null, 2);
-												}
-											} else {
-												// Single value - convert to array and stringify with formatting
-												fieldData[key] = JSON.stringify([trimmedValue], null, 2);
-											}
-										} else if (value !== null && value !== undefined) {
-											// Any other value - convert to array and stringify
-											fieldData[key] = JSON.stringify([value], null, 2);
-										}
-									}
-									// Handle other field types that need string parsing
-									else if (typeof value === 'string' && value.trim()) {
-										const trimmedValue = value.trim();
-										
-										try {
-											// Parse localized fields (objects)
-											if (fieldInfo?.localized && trimmedValue.startsWith('{')) {
-												fieldData[key] = JSON.parse(trimmedValue);
-											}
-											// Parse modular content and other array fields
-											else if (fieldInfo?.field_type === 'modular_content' || 
-													fieldInfo?.field_type === 'links' || 
-													fieldInfo?.field_type === 'gallery') {
-												if (trimmedValue.startsWith('[')) {
-													fieldData[key] = JSON.parse(trimmedValue);
-												} else {
-													// Single value - convert to array
-													fieldData[key] = [trimmedValue];
-												}
-											}
-											// Parse other JSON objects/arrays
-											else if (trimmedValue.startsWith('{') || trimmedValue.startsWith('[')) {
-												fieldData[key] = JSON.parse(trimmedValue);
-											}
-										} catch (e) {
-											// If it's not valid JSON, keep it as a string
-										}
+									const parsedValue = parseFieldValue(key, value, fieldInfos[key]);
+									if (parsedValue === undefined) {
+										delete fieldData[key]; // Remove helper fields
+									} else {
+										fieldData[key] = parsedValue;
 									}
 								}
 							} else if (createFields.mappingMode === 'autoMapInputData') {

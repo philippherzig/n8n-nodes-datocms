@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-datocms",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "n8n node for DatoCMS integration with simplified operations and dynamic field loading",
   "keywords": [
     "n8n-community-node-package",
@@ -55,6 +55,6 @@
     "n8n-workflow": "*"
   },
   "dependencies": {
-    "@datocms/cma-client-node": "^4.0.2"
+    "@datocms/cma-client-node": "^5.1.13"
   }
 }
